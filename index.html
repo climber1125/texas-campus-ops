@@ -1,0 +1,2455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>NLC Campus Ops</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{
+    --bg:#0f1720; --card:#182432; --card2:#1f2e3f; --border:#2c3d51;
+    --text:#e8eef5; --sub:#8fa3b8; --accent:#3ba7ff; --green:#2fbf71;
+    --red:#ff5b5b; --amber:#ffb020;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    background:var(--bg);color:var(--text);overflow:hidden;}
+  #map{position:absolute;top:0;left:0;right:0;bottom:0;z-index:0;}
+
+  .topbar{position:absolute;top:0;left:0;right:0;z-index:30;padding:10px 12px;
+    background:linear-gradient(rgba(15,23,32,.95),transparent);display:flex;align-items:center;gap:10px;}
+  .menu-btn{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;
+    width:42px;height:42px;font-size:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .topbar .title{flex:1;}
+  .topbar h1{font-size:15px;margin:0;font-weight:700;text-shadow:0 1px 3px #000;}
+  #count{font-size:11.5px;color:#cfe0f0;text-shadow:0 1px 3px #000;margin-top:1px;}
+  #sync{font-size:10px;padding:3px 8px;border-radius:10px;background:var(--card2);border:1px solid var(--border);color:var(--sub);flex-shrink:0;}
+  #sync.ok{color:var(--green);border-color:var(--green);}
+  #sync.bad{color:var(--red);border-color:var(--red);}
+  .role-pill{font-size:10px;padding:3px 8px;border-radius:10px;background:var(--card2);border:1px solid var(--border);color:var(--sub);flex-shrink:0;text-transform:uppercase;font-weight:700;}
+  .role-pill.crew{color:var(--amber);border-color:var(--amber);}
+  .role-pill.admin{color:var(--green);border-color:var(--green);}
+  .lock-box{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--sub);}
+
+  .side-btns{position:absolute;right:12px;bottom:100px;z-index:30;display:flex;flex-direction:column;gap:8px;}
+  .side-btn{width:46px;height:46px;border-radius:12px;background:var(--card);border:1px solid var(--border);
+    color:var(--text);font-size:20px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.4);}
+  .side-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .fab{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:30;
+    padding:16px 26px;border-radius:30px;border:none;background:var(--accent);color:#fff;
+    font-size:16px;font-weight:700;box-shadow:0 4px 18px rgba(0,0,0,.5);white-space:nowrap;}
+  .fab:active{opacity:.85;}
+
+  .legend{position:absolute;bottom:100px;left:12px;z-index:30;background:rgba(24,36,50,.9);
+    border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px;color:var(--sub);}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:4px;}
+
+  .overlay{position:absolute;inset:0;z-index:50;background:rgba(10,15,20,.55);display:flex;align-items:flex-end;}
+  .hidden{display:none !important;}
+  .sheet{background:var(--card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;
+    width:100%;padding:18px 18px 24px;max-height:88vh;overflow-y:auto;}
+  .sheet h2{margin:0 0 10px;font-size:17px;}
+  .sheet p{color:var(--sub);font-size:13px;margin:4px 0 12px;}
+  .grab{width:38px;height:4px;border-radius:2px;background:var(--border);margin:-6px auto 14px;}
+
+  .menu-item{display:flex;align-items:center;gap:14px;padding:15px 6px;border-bottom:1px solid var(--border);font-size:15px;font-weight:600;}
+  .menu-item:last-child{border-bottom:none;}
+  .menu-item .ic{width:30px;text-align:center;font-size:18px;}
+  .menu-item .sub{display:block;font-size:12px;color:var(--sub);font-weight:400;margin-top:2px;}
+  .menu-item.danger{color:var(--red);}
+
+  .list-item{display:flex;align-items:center;gap:12px;padding:13px 6px;border-bottom:1px solid var(--border);}
+  .list-item .st{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+  .list-item .name{font-weight:700;font-size:15px;}
+  .list-item .meta{font-size:12px;color:var(--sub);}
+  .list-item .arrow{margin-left:auto;color:var(--sub);}
+  .filter-row{display:flex;gap:8px;margin-bottom:8px;}
+  .filter-row button{flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--sub);font-size:13px;font-weight:600;}
+  .filter-row button.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .acc-ring{width:70px;height:70px;border-radius:50%;border:5px solid var(--accent);
+    margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;
+    animation:pulse 1.4s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+
+  .big-btn{width:100%;padding:16px;font-size:16px;font-weight:700;border:none;border-radius:12px;color:#fff;background:var(--accent);margin-top:10px;}
+  .big-btn.green{background:var(--green);}
+  .big-btn.red{background:var(--red);}
+  .big-btn.amber{background:var(--amber);color:#2a1a00;}
+  .big-btn.secondary{background:var(--card2);color:var(--text);border:1px solid var(--border);}
+  .big-btn:disabled{opacity:.5;}
+
+  label{display:block;font-size:13px;color:var(--sub);margin:14px 0 6px;font-weight:600;}
+  input[type=text], textarea{width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);
+    background:var(--card2);color:var(--text);font-size:15px;font-family:inherit;}
+  textarea{min-height:64px;resize:vertical;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{padding:9px 13px;border-radius:20px;border:1px solid var(--border);background:var(--card2);color:var(--sub);font-size:13px;}
+  .chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;background:var(--card2);
+    border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:16px;}
+  .toggle-row span{font-size:14px;font-weight:600;}
+  .toggle-row input{width:22px;height:22px;}
+  .status-pill{display:inline-block;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700;margin-bottom:8px;}
+  .status-pill.ok{background:rgba(47,191,113,.2);color:var(--green);}
+  .status-pill.no{background:rgba(255,91,91,.2);color:var(--red);}
+  .status-pill.due{background:rgba(255,176,32,.2);color:var(--amber);}
+
+  .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--green);
+    color:#04220f;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;z-index:100;
+    box-shadow:0 4px 20px rgba(0,0,0,.4);max-width:90vw;text-align:center;}
+  .toast.error{background:var(--red);color:#2b0000;}
+  .drop-pin-icon{background:transparent !important;border:none !important;}
+  .pole-label{background:rgba(15,23,32,.85);color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:700;padding:2px 5px;box-shadow:none;}
+  .pole-label::before{display:none;}
+  .inv-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .inv-row input[type=text]{flex:1;}
+  .inv-row input[type=number]{width:70px;flex:none;}
+  .me-dot{width:16px;height:16px;border-radius:50%;background:#3ba7ff;border:3px solid #fff;box-shadow:0 0 0 2px rgba(59,167,255,.5);}
+
+  /* ---------- Campus Ops: work orders + radio ---------- */
+  .ops-btn{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;
+    height:32px;padding:0 10px;font-size:13px;font-weight:700;flex-shrink:0;}
+  .ops-btn.hot{border-color:var(--red);color:var(--red);}
+  .fab.radio{background:var(--red);}
+  .wo-row{display:flex;gap:10px;align-items:flex-start;padding:12px 6px;border-bottom:1px solid var(--border);cursor:pointer;}
+  .wo-row .bar{width:5px;align-self:stretch;border-radius:3px;flex-shrink:0;}
+  .wo-row .top{font-weight:700;font-size:14px;}
+  .wo-row .iss{font-size:13px;color:var(--text);margin-top:2px;}
+  .wo-row .meta{font-size:12px;color:var(--sub);margin-top:3px;}
+  .pri-Emergency{background:var(--red);} .pri-Urgent{background:var(--amber);} .pri-Routine{background:var(--accent);}
+  .wo-tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:var(--card2);border:1px solid var(--border);color:var(--sub);margin-left:6px;}
+  .wo-hist{font-size:12px;color:var(--sub);border-left:2px solid var(--border);padding-left:10px;margin-top:6px;}
+  .wo-hist div{margin-bottom:6px;}
+  .mic-btn{width:100%;padding:20px;font-size:18px;font-weight:800;border-radius:14px;border:2px solid var(--red);
+    background:transparent;color:var(--red);margin-top:4px;}
+  .mic-btn.live{background:var(--red);color:#fff;animation:pulse 1.2s ease-in-out infinite;}
+  .parse-note{font-size:12px;color:var(--amber);margin-top:6px;min-height:14px;}
+  select{width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--card2);color:var(--text);font-size:15px;}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="topbar">
+  <button class="menu-btn" id="menuBtn">☰</button>
+  <div class="title">
+    <h1>NLC Campus Ops</h1>
+    <div id="count">loading…</div>
+  </div>
+  <button class="ops-btn ops-staff hidden" id="opsBtn" title="Work orders">📋 <span id="opsCount">0</span></button>
+  <div id="role" class="role-pill">viewer</div>
+  <div id="sync">syncing</div>
+</div>
+
+<div class="side-btns">
+  <button class="side-btn" id="locateBtn" title="My location">⌖</button>
+  <button class="side-btn" id="fitBtn" title="Show all poles">⛶</button>
+  <button class="side-btn" id="measureBtn" title="Measure distance">📏</button>
+</div>
+
+<div class="legend hidden" id="measureBanner" style="left:50%;transform:translateX(-50%);bottom:auto;top:60px;">
+  Tap two poles or spots on the map to measure. <span id="measureResult"></span>
+</div>
+
+<div class="overlay hidden" id="batchBanner" style="align-items:flex-start;pointer-events:none;">
+  <div class="sheet" style="border-radius:0 0 16px 16px;margin-top:56px;pointer-events:auto;">
+    <p style="margin:0 0 10px;"><b id="batchCountText">0 dropped.</b> Tap anywhere on the map to drop a pin — numbered automatically, no form. Fill in details later from the Pole List.</p>
+    <button class="big-btn amber" id="batchDropHereBtn">📍 Drop at My Location</button>
+    <button class="big-btn green" id="batchDoneBtn">✓ Done — Finish Batch</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="selectBanner" style="align-items:flex-start;pointer-events:none;">
+  <div class="sheet" style="border-radius:0 0 16px 16px;margin-top:56px;pointer-events:auto;">
+    <p style="margin:0 0 10px;"><b id="selectCountText">0 poles selected.</b> Tap poles on the map to select them.</p>
+    <button class="big-btn green" id="selectMoveBtn">🧲 Move Selected Together</button>
+    <button class="big-btn green hidden" id="selectMarkTestedBtn">✅ Mark Selected Tested</button>
+    <button class="big-btn red hidden" id="selectDeleteBtn">🗑 Delete Selected</button>
+    <button class="big-btn secondary" id="selectClearBtn">Clear Selection</button>
+    <button class="big-btn secondary" id="selectCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:#2fbf71"></span>Tested</span> &nbsp;
+  <span><span class="dot" style="background:#ffb020"></span>Due</span> &nbsp;
+  <span><span class="dot" style="background:#ff5b5b"></span>Not tested</span> &nbsp;
+  <span>⚡ Transformer</span> &nbsp;
+  <span>🔌 Pedestal</span> &nbsp;
+  <span>🏚 Building</span> &nbsp;
+  <span>🕳️ Pit</span> &nbsp;
+  <span>🔗 Span</span>
+</div>
+
+<button class="fab" id="markBtn">＋ Add Item</button>
+<button class="fab radio ops-admin hidden" id="radioBtn">🎙 Radio Call</button>
+
+<!-- MENU -->
+<div class="overlay hidden" id="menuOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="menu-item" id="mAccess"><span class="ic">🔑</span><div>Access<span class="sub" id="mAccessSub">Enter a crew or admin code</span></div></div>
+    <div class="menu-item ops-staff hidden" id="mOps"><span class="ic">🧾</span><div>Work Orders<span class="sub" id="mOpsSub">Open orders from radio calls</span></div></div>
+    <div class="menu-item" id="mList"><span class="ic">📋</span><div>Pole List<span class="sub" id="mListSub">View, search, jump to any pole</span></div></div>
+    <div class="menu-item admin-only" id="mMultiMove"><span class="ic">🧲</span><div>Move Multiple Pins<span class="sub">Select several, drag them together</span></div></div>
+    <div class="menu-item admin-only" id="mMultiDelete"><span class="ic">🗑</span><div>Delete Multiple<span class="sub">Select several, remove them together</span></div></div>
+    <div class="menu-item test-only" id="mMultiTest"><span class="ic">☑</span><div>Mark Multiple Tested<span class="sub">Select several poles, one tester name, one email</span></div></div>
+    <div class="menu-item" id="mViews"><span class="ic">📌</span><div>Saved Views<span class="sub">Bookmark a spot on the map, share as a link</span></div></div>
+    <div class="menu-item" id="mPolicies"><span class="ic">📜</span><div>Policies &amp; Specs<span class="sub">Yard rules, construction specs, reference notes</span></div></div>
+    <div class="menu-item" id="mRefresh"><span class="ic">🔄</span><div>Refresh<span class="sub">Pull latest from the shared map</span></div></div>
+    <div class="menu-item" id="mPrint"><span class="ic">🖨</span><div>Print Inventory<span class="sub">Clean table — pole #, status, tested by, dates</span></div></div>
+    <div class="menu-item" id="mExport"><span class="ic">⬇</span><div>Export Backup<span class="sub">Save all poles to a file</span></div></div>
+    <div class="menu-item admin-only" id="mImport"><span class="ic">⬆</span><div>Import Backup<span class="sub">Load poles from a file into the shared map</span></div></div>
+    <div class="menu-item admin-only" id="mReset"><span class="ic">↺</span><div>Reset All Tests<span class="sub">New testing round — inventory stays</span></div></div>
+    <button class="big-btn secondary" id="menuClose">Close</button>
+    <input type="file" id="importFile" accept="application/json" class="hidden">
+  </div>
+</div>
+
+<!-- ACCESS -->
+<div class="overlay hidden" id="accessOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>Access</h2>
+    <div class="lock-box" id="accessInfo"></div>
+    <label>Enter access code</label>
+    <input type="text" id="accessKey" placeholder="crew or admin code" autocapitalize="off" autocorrect="off">
+    <button class="big-btn green" id="accessGo">Unlock</button>
+    <button class="big-btn secondary hidden" id="accessOut">Sign out (back to viewer)</button>
+    <button class="big-btn secondary" id="accessClose">Close</button>
+  </div>
+</div>
+
+<!-- SAVED VIEWS -->
+<div class="overlay hidden" id="viewsOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>Saved Views</h2>
+    <label>Save the map's current position</label>
+    <input type="text" id="viewNameInput" placeholder="e.g. North Yard, Training Field">
+    <button class="big-btn green" id="saveViewBtn">＋ Save Current View</button>
+    <div id="savedViewsList" style="margin-top:14px;"></div>
+    <button class="big-btn secondary" id="viewsClose">Close</button>
+  </div>
+</div>
+
+<!-- POLE LIST -->
+<div class="overlay hidden" id="listOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>Pole List</h2>
+    <div class="filter-row">
+      <button class="on" data-f="all">All</button>
+      <button data-f="untested">Not Tested</button>
+      <button data-f="due">Due for Retest</button>
+      <button data-f="tested">Tested &amp; Current</button>
+    </div>
+    <input type="text" id="listSearch" placeholder="Search pole #, notes, components, or tester">
+    <div id="listBody" style="margin-top:8px;"></div>
+    <button class="big-btn secondary" id="listClose">Close</button>
+  </div>
+</div>
+
+<!-- TESTER NAME -->
+<div class="overlay hidden" id="testerOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>Who Tested This?</h2>
+    <label>Your name</label>
+    <input type="text" id="testerNameInput" placeholder="First and last name">
+    <button class="big-btn green" id="testerGoBtn">Confirm &amp; Send Email</button>
+    <button class="big-btn secondary" id="testerCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- TYPE CHOICE -->
+<div class="overlay hidden" id="typeChoiceOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>What Are You Adding?</h2>
+    <div id="typeChoiceRow"></div>
+    <button class="big-btn secondary" id="typeChoiceCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ADD CHOICE -->
+<div class="overlay hidden" id="addChoiceOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2 id="addChoiceTitle">Add a Pole</h2>
+    <button class="big-btn green" id="choiceGpsBtn">📍 I'm At the Pole — Use GPS</button>
+    <button class="big-btn secondary" id="choiceManualBtn">🗺 Not There — Place on Map</button>
+    <button class="big-btn amber" id="choiceBatchBtn">⚡ Drop Several Pins Fast</button>
+    <button class="big-btn amber hidden" id="choiceAreaBtn">🔲 Mark as an Area (4 Corner Pins)</button>
+    <button class="big-btn secondary" id="choiceCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- AREA PICK BANNER -->
+<div class="overlay hidden" id="areaPickBanner" style="align-items:flex-start;pointer-events:none;">
+  <div class="sheet" style="border-radius:0 0 16px 16px;margin-top:56px;pointer-events:auto;">
+    <p style="margin:0 0 10px;"><b id="areaPickCountText">0 of 4 corners dropped.</b> Tap the 4 corners of the area, in order around its edge.</p>
+    <button class="big-btn secondary" id="areaPickCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- SPAN PICK BANNER -->
+<div class="overlay hidden" id="spanPickBanner" style="align-items:flex-start;pointer-events:none;">
+  <div class="sheet" style="border-radius:0 0 16px 16px;margin-top:56px;pointer-events:auto;">
+    <p style="margin:0 0 10px;" id="spanPickHint">Tap the first pole/structure this conductor leaves from.</p>
+    <button class="big-btn secondary" id="spanPickCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- CONDUCTOR SPAN FORM -->
+<div class="overlay hidden" id="spanFormOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2 id="spanFormTitle">Conductor Span</h2>
+    <p id="spanFormBetween" style="margin-top:-6px;color:var(--sub);"></p>
+    <label>Conductor Size</label>
+    <input type="text" id="spanSize" placeholder="e.g. 4/0 ACSR, 397 MCM AAC">
+    <label>Notes</label>
+    <textarea id="spanNotes" placeholder="Phase, voltage, condition, anything else"></textarea>
+    <button class="big-btn green" id="spanSaveBtn">Save Span</button>
+    <button class="big-btn secondary" id="spanCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- GPS ACQUIRE -->
+<div class="overlay hidden" id="gpsOverlay">
+  <div class="sheet">
+    <div class="acc-ring" id="accRing">…</div>
+    <h2 style="text-align:center;">Getting your location</h2>
+    <p style="text-align:center;">Hold still. Locks onto the best reading — usually 5–10 sec outside.</p>
+    <button class="big-btn green" id="useNowBtn" disabled>Use This Reading</button>
+    <button class="big-btn secondary" id="cancelGpsBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- FINE-TUNE -->
+<div class="overlay hidden" id="tuneOverlay">
+  <div class="sheet" style="padding:0;background:transparent;border:none;">
+    <div style="position:relative;height:60vh;border-radius:16px 16px 0 0;overflow:hidden;">
+      <div id="tuneMap" style="position:absolute;inset:0;"></div>
+    </div>
+    <div class="sheet" style="border-radius:0;">
+      <p style="margin-top:0;" id="tuneHint">Drag the pin with your finger to the exact spot, then confirm.</p>
+      <button class="big-btn green" id="confirmPosBtn">Confirm Position</button>
+      <button class="big-btn secondary" id="backGpsBtn">Back</button>
+      <button class="big-btn secondary" id="cancelTuneBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- GROUP MOVE -->
+<div class="overlay hidden" id="groupMoveOverlay">
+  <div class="sheet" style="padding:0;background:transparent;border:none;">
+    <div style="position:relative;height:60vh;border-radius:16px 16px 0 0;overflow:hidden;">
+      <div id="groupMoveMap" style="position:absolute;inset:0;"></div>
+    </div>
+    <div class="sheet" style="border-radius:0;">
+      <p style="margin-top:0;" id="groupMoveHint">Drag the 🧲 handle — every selected pole (dots) moves with it. Confirm when the group lines up.</p>
+      <button class="big-btn green" id="confirmGroupMoveBtn">Confirm — Move All</button>
+      <button class="big-btn secondary" id="cancelGroupMoveBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- LABEL FORM (new + edit) -->
+<div class="overlay hidden" id="formOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2 id="formTitle">Label This Pole</h2>
+    <label>Area</label>
+    <div class="chips" id="areaRow"></div>
+    <label>Pole # / ID</label>
+    <input type="text" id="poleId" placeholder="Pick an area above, or type your own">
+    <div id="specPresetSection">
+      <label>Quick Spec (fills in typical components — still editable after)</label>
+      <div class="chips" id="specPresetRow"></div>
+    </div>
+    <div id="componentsSection">
+      <label>What's on it</label>
+      <div class="chips" id="chipRow">
+        <div class="chip" data-v="Transformer">Transformer</div>
+        <div class="chip" data-v="Crossarm">Crossarm</div>
+        <div class="chip" data-v="Guy Wire">Guy Wire</div>
+        <div class="chip" data-v="Anchor">Anchor</div>
+        <div class="chip" data-v="Down Guy">Down Guy</div>
+        <div class="chip" data-v="Streetlight">Streetlight</div>
+        <div class="chip" data-v="Transformer Ground">Transformer Ground</div>
+        <div class="chip" data-v="Riser">Riser</div>
+        <div class="chip" data-v="Switch">Switch</div>
+        <div class="chip" data-v="Fuse Cutout">Fuse Cutout</div>
+      </div>
+    </div>
+    <div id="linkedPitSection" class="hidden">
+      <label>Tied to Pit</label>
+      <select id="linkedPitSelect"><option value="">— None —</option></select>
+    </div>
+    <label>Notes</label>
+    <textarea id="notes" placeholder="Condition, hazards, anything not covered above"></textarea>
+    <div class="toggle-row" id="testedNowRow">
+      <span>Tested right now — send email</span>
+      <input type="checkbox" id="testedNow">
+    </div>
+    <button class="big-btn green" id="saveBtn">Save Pole</button>
+    <button class="big-btn secondary" id="cancelFormBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- VIEW EXISTING POLE -->
+<div class="overlay hidden" id="viewOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <div id="viewTypeBadge" style="font-size:11px;color:var(--sub);text-transform:uppercase;font-weight:700;letter-spacing:.4px;margin-bottom:4px;"></div>
+    <div id="viewStatus"></div>
+    <h2 id="viewTitle">Pole</h2>
+    <p id="viewComponents"></p>
+    <p id="viewNotes"></p>
+    <p style="font-size:12px;" id="viewMeta"></p>
+    <p style="font-size:13px;color:var(--accent);font-weight:700;" id="viewDistance"></p>
+    <p id="viewLinkedPit" class="hidden" style="font-size:13px;"></p>
+    <div id="viewInventorySection" class="hidden">
+      <label>Inventory</label>
+      <p id="viewInventorySummary" style="font-size:13px;"></p>
+      <button class="big-btn secondary admin-only" id="editInventoryBtn">📦 Edit Inventory</button>
+    </div>
+    <div id="viewTiedSection" class="hidden">
+      <label>Poles / Items Tied to This Pit</label>
+      <div id="viewTiedList" style="font-size:13px;"></div>
+    </div>
+    <div id="viewOpsSection" class="hidden">
+      <label>Open Work Orders</label>
+      <div id="viewOpsList" style="font-size:13px;"></div>
+    </div>
+    <button class="big-btn amber ops-admin hidden" id="viewNewOpsBtn">🧾 New Ops Work Order</button>
+    <button class="big-btn green" id="markTestedBtn">✅ Mark Tested &amp; Email</button>
+    <button class="big-btn amber hidden" id="unmarkTestedBtn">Mark Untested</button>
+    <button class="big-btn secondary" id="workOrderBtn">🖨 Training Trouble Order</button>
+    <button class="big-btn secondary admin-only" id="editBtn">Edit Details</button>
+    <button class="big-btn secondary admin-only" id="repositionBtn">📍 Reposition Pin</button>
+    <button class="big-btn secondary admin-only hidden" id="redrawAreaBtn">🔲 Redraw Boundary (4 Corners)</button>
+    <button class="big-btn secondary hidden" id="gotoPitBtn">🕳️ Go to Linked Pit</button>
+    <button class="big-btn secondary" id="gotoBtn">Show on Map</button>
+    <button class="big-btn secondary" id="shareBtn">🔗 Share Link to This Pole</button>
+    <button class="big-btn red admin-only" id="deleteBtn">Delete This Pole</button>
+    <button class="big-btn secondary" id="closeViewBtn">Close</button>
+  </div>
+</div>
+
+<!-- POLICIES & SPECS -->
+<div class="overlay hidden" id="policiesOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>Policies &amp; Specs</h2>
+    <p id="policiesMeta" style="font-size:12px;color:var(--sub);"></p>
+    <div id="policiesReadView">
+      <p id="policiesText" style="white-space:pre-wrap;font-size:14px;"></p>
+      <button class="big-btn secondary admin-only" id="policiesEditBtn">Edit</button>
+    </div>
+    <div id="policiesEditView" class="hidden">
+      <textarea id="policiesInput" style="min-height:40vh;" placeholder="Yard policies, safety rules, construction specs, reference notes..."></textarea>
+      <button class="big-btn green" id="policiesSaveBtn">Save</button>
+      <button class="big-btn secondary" id="policiesCancelEditBtn">Cancel</button>
+    </div>
+    <button class="big-btn secondary" id="policiesCloseBtn">Close</button>
+  </div>
+</div>
+
+<!-- BUILDING / TRANSFORMER / PEDESTAL INVENTORY EDITOR -->
+<div class="overlay hidden" id="invOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2 id="invTitle">Inventory</h2>
+    <div id="invRows"></div>
+    <button class="big-btn secondary" id="invAddRowBtn">＋ Add Item</button>
+    <button class="big-btn green" id="invSaveBtn">Save Inventory</button>
+    <button class="big-btn secondary" id="invCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- WORK ORDER -->
+<div class="overlay hidden" id="woOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>Create Work Order</h2>
+    <p id="woForPole" style="margin-top:-6px;"></p>
+    <label>Trainee Name</label>
+    <input type="text" id="woTrainee" placeholder="Trainee name">
+    <label>Instructor Name</label>
+    <input type="text" id="woInstructor" placeholder="Instructor name">
+    <label>Priority</label>
+    <div class="chips" id="woPriorityRow">
+      <div class="chip" data-v="Routine">Routine</div>
+      <div class="chip" data-v="Urgent">Urgent</div>
+      <div class="chip" data-v="Emergency">Emergency</div>
+    </div>
+    <label>Reported Trouble</label>
+    <textarea id="woTrouble" placeholder="What's the trainee troubleshooting? e.g. Open circuit between risers 2 and 3"></textarea>
+    <button class="big-btn green" id="woGenerateBtn">🖨 Generate &amp; Print Work Order</button>
+    <button class="big-btn secondary" id="woCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- OPS: WORK ORDER LIST -->
+<div class="overlay hidden" id="opsListOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2>Work Orders</h2>
+    <div class="filter-row" id="opsFilterRow">
+      <button data-f="open" class="on">Open</button>
+      <button data-f="done">Closed</button>
+      <button data-f="all">All</button>
+    </div>
+    <input type="text" id="opsSearch" placeholder="Search pole, issue, assignee, WO #">
+    <div id="opsList" style="margin-top:8px;"></div>
+    <button class="big-btn amber ops-admin hidden" id="opsNewBtn">＋ New Work Order</button>
+    <button class="big-btn secondary" id="opsListClose">Close</button>
+  </div>
+</div>
+
+<!-- OPS: NEW WORK ORDER (radio call or typed) -->
+<div class="overlay hidden" id="opsFormOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <h2 id="opsFormTitle">Radio Call → Work Order</h2>
+    <button class="mic-btn" id="micBtn">🎙 Tap to Listen</button>
+    <label>What was said (edit or type)</label>
+    <textarea id="opsHeard" placeholder="e.g. This is Mike, CA 14 has a cracked crossarm, urgent, assign to Andrew"></textarea>
+    <button class="big-btn secondary" id="opsParseBtn">⤵ Fill Form From Call</button>
+    <div class="parse-note" id="opsParseNote"></div>
+    <label>Pole / Item</label>
+    <input type="text" id="opsPole" list="opsPoleList" placeholder="e.g. CA14 — blank if no specific pole" autocapitalize="characters" autocorrect="off">
+    <datalist id="opsPoleList"></datalist>
+    <label>Issue</label>
+    <textarea id="opsIssue" placeholder="Cracked crossarm on south side"></textarea>
+    <label>Priority</label>
+    <div class="chips" id="opsPriRow">
+      <div class="chip" data-v="Routine">Routine</div>
+      <div class="chip" data-v="Urgent">Urgent</div>
+      <div class="chip" data-v="Emergency">Emergency</div>
+    </div>
+    <label>Assign To</label>
+    <input type="text" id="opsAssignee" list="opsPeopleList" placeholder="Instructor / staff name (optional)">
+    <datalist id="opsPeopleList"></datalist>
+    <label>Called In By</label>
+    <input type="text" id="opsCaller" list="opsPeopleList" placeholder="Who radioed it in (optional)">
+    <label>Operator (you)</label>
+    <input type="text" id="opsBy" placeholder="Your name — goes in the history log">
+    <button class="big-btn green" id="opsSaveBtn">Save Work Order</button>
+    <button class="big-btn secondary" id="opsFormCancel">Cancel</button>
+  </div>
+</div>
+
+<!-- OPS: WORK ORDER DETAIL -->
+<div class="overlay hidden" id="opsDetailOverlay">
+  <div class="sheet">
+    <div class="grab"></div>
+    <div id="opsDetailBadge" style="font-size:11px;color:var(--sub);text-transform:uppercase;font-weight:700;letter-spacing:.4px;margin-bottom:4px;"></div>
+    <h2 id="opsDetailTitle">WO</h2>
+    <p id="opsDetailIssue" style="color:var(--text);font-size:15px;white-space:pre-wrap;"></p>
+    <p id="opsDetailMeta" style="font-size:12px;"></p>
+    <div id="opsEditSection" class="ops-admin hidden">
+      <label>Status</label>
+      <select id="opsStatus">
+        <option>New</option><option>Assigned</option><option>In Progress</option>
+        <option>On Hold</option><option>Complete</option><option>Canceled</option>
+      </select>
+      <label>Priority</label>
+      <select id="opsPriority"><option>Routine</option><option>Urgent</option><option>Emergency</option></select>
+      <label>Assign To</label>
+      <input type="text" id="opsEditAssignee" list="opsPeopleList">
+      <label>Add Note</label>
+      <input type="text" id="opsNote" placeholder="e.g. Crew on site, waiting on material">
+      <button class="big-btn green" id="opsUpdateBtn">Save Changes</button>
+    </div>
+    <button class="big-btn secondary" id="opsGotoPoleBtn">Show Pole on Map</button>
+    <button class="big-btn secondary" id="opsPrintBtn">🖨 Print</button>
+    <label>History</label>
+    <div class="wo-hist" id="opsHistory"></div>
+    <button class="big-btn secondary" id="opsDetailClose">Close</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+/* =========================================================
+   CONFIG
+   NOTIFY_EMAIL is required. EmailJS keys are OPTIONAL:
+   blank = mail app opens pre-filled; filled = sends silently. See README.
+   AREAS defines the sections of your pole yard. Each gets a short code;
+   numbering restarts at 1 within each area (CA1, CA2... then DA1, DA2...)
+   instead of one long running count. Add, remove, or rename freely —
+   the code is what gets used in the pole ID, the label is what shows
+   as a button in the app.
+   ========================================================= */
+const NOTIFY_EMAIL = "ditchdigger1125@gmail.com";
+const EMAILJS_PUBLIC_KEY = "";
+const EMAILJS_SERVICE_ID = "";
+const EMAILJS_TEMPLATE_ID = "";
+const AREAS = [
+  { code: "CA", label: "Climbing Area" },
+  { code: "DA", label: "Distribution Area" },
+  { code: "TA", label: "Transmission Area" },
+  { code: "UG", label: "Underground" },
+  { code: "RA", label: "Rigging Area" },
+  { code: "BLD", label: "Buildings & Sheds" },
+];
+// The kinds of things you can drop a pin on. hasTest = can be marked tested / gets a work order.
+// hasComponents = shows the "what's on it" chip picker. hasInventory = shows an editable item list instead.
+const ITEM_TYPES = [
+  { key: "pole",        label: "Pole",                   icon: "⏚", hasTest: true,  hasComponents: true,  hasInventory: false, hasArea: false, canLinkPit: true,  hasSpecPresets: true },
+  { key: "transformer",  label: "Pad-Mount Transformer",  icon: "⚡", hasTest: false, hasComponents: true,  hasInventory: false, hasArea: false, canLinkPit: true,  hasSpecPresets: true },
+  { key: "pedestal",     label: "Pedestal",               icon: "🔌", hasTest: false, hasComponents: true,  hasInventory: false, hasArea: false, canLinkPit: true,  hasSpecPresets: true },
+  { key: "building",     label: "Building / Shed",        icon: "🏚", hasTest: false, hasComponents: false, hasInventory: true,  hasArea: true,  canLinkPit: false, hasSpecPresets: false },
+  { key: "pit",          label: "Underground Pit",        icon: "🕳️", hasTest: false, hasComponents: false, hasInventory: true,  hasArea: true,  canLinkPit: false, hasSpecPresets: false },
+];
+// Quick construction-spec presets shown in the add/edit form for pole-like items — tapping one
+// replaces the "what's on it" chip selection with its typical components. Still hand-editable after.
+// Edit this list to match your own standard construction types.
+const SPEC_PRESETS = [
+  { key: "sp_tan", label: "Single-Phase Tangent",   components: ["Crossarm"] },
+  { key: "sp_de",  label: "Single-Phase Dead-End",  components: ["Crossarm", "Anchor", "Down Guy"] },
+  { key: "sp_ang", label: "Single-Phase Angle",     components: ["Crossarm", "Guy Wire", "Anchor"] },
+  { key: "tp_tan", label: "Three-Phase Tangent",    components: ["Crossarm", "Transformer"] },
+  { key: "tp_de",  label: "Three-Phase Dead-End",   components: ["Crossarm", "Anchor", "Down Guy", "Transformer Ground"] },
+  { key: "tp_ang", label: "Three-Phase Angle",      components: ["Crossarm", "Guy Wire", "Anchor", "Transformer"] },
+  { key: "riser",  label: "Riser Pole",             components: ["Riser", "Transformer Ground"] },
+];
+// Conductor spans aren't dropped as pins — they connect two existing items — so they live
+// outside ITEM_TYPES (which drives the pin add-flow) but still need a lookup entry.
+const SPAN_TYPE = { key: "span", label: "Conductor Span", icon: "🔗", hasTest: false, hasComponents: false, hasInventory: false, hasArea: false };
+function itemTypeInfo(key){ if (key === "span") return SPAN_TYPE; return ITEM_TYPES.find(t => t.key === key) || ITEM_TYPES[0]; }
+const RETEST_DAYS = 365; // poles tested longer ago than this show amber "due for retest"
+// Campus Ops: poles come live from the original Pole Yard site and are READ-ONLY here.
+// Codes on this site control work orders: admin = operator (create/edit), crew = staff (view).
+const POLES_READONLY = true;
+const API = "/api/poles";
+const POLICIES_API = "/api/policies";
+/* ========================================================= */
+
+/* ---------------- access role ---------------- */
+const KEY_KEY = "campusPolesKey";
+let accessKey = localStorage.getItem(KEY_KEY) || "";
+let role = "viewer";
+const hdr = () => accessKey ? { 'x-key': accessKey } : {};
+
+function poleIsAdmin(){ return !POLES_READONLY && role === 'admin'; }
+function poleCanTest(){ return !POLES_READONLY && (role === 'admin' || role === 'crew'); }
+function applyRole(){
+  const badge = $('role'); badge.textContent = role === 'admin' ? 'operator' : role === 'crew' ? 'staff' : role;
+  badge.className = 'role-pill ' + role;
+  const isAdmin = poleIsAdmin(), canTest = poleCanTest();
+  document.querySelectorAll('.ops-admin').forEach(el => el.classList.toggle('hidden', role !== 'admin'));
+  document.querySelectorAll('.ops-staff').forEach(el => el.classList.toggle('hidden', role === 'viewer'));
+  document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !isAdmin));
+  document.querySelectorAll('.test-only').forEach(el => el.classList.toggle('hidden', !canTest));
+  $('markBtn').classList.toggle('hidden', !isAdmin);
+  $('mAccessSub').textContent = role === 'viewer' ? 'View only — enter a code to see work orders' : 'Signed in as ' + (role === 'admin' ? 'operator' : 'staff');
+  opsOnRole();
+}
+async function checkRole(){
+  try {
+    const r = await fetch(`${API}/whoami`, { method:'POST', headers: hdr() });
+    role = r.ok ? (await r.json()).role : 'viewer';
+  } catch (e) { role = accessKey ? role : 'viewer'; } // offline: keep last known
+  applyRole();
+}
+
+const EMAILJS_ON = !!(EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && window.emailjs);
+if (EMAILJS_ON) emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+
+const $ = id => document.getElementById(id);
+const show = el => el.classList.remove('hidden');
+const hide = el => el.classList.add('hidden');
+
+/* ---------------- shared storage (Netlify Blobs) + local cache ---------------- */
+const CACHE_KEY = "campusPolesCache";
+const PENDING_KEY = "campusPolesPending"; // writes that failed offline, retried later
+let poles = (() => { try { return JSON.parse(localStorage.getItem(CACHE_KEY)) || []; } catch(e){ return []; } })();
+let pending = (() => { try { return JSON.parse(localStorage.getItem(PENDING_KEY)) || []; } catch(e){ return []; } })();
+
+function cache(){ localStorage.setItem(CACHE_KEY, JSON.stringify(poles)); }
+function savePending(){ localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); }
+function setSync(state, text){ const s = $('sync'); s.className = state; s.textContent = text; }
+
+async function apiPut(pole){
+  const r = await fetch(`${API}/${encodeURIComponent(pole.id)}`, { method:'PUT', headers:{'Content-Type':'application/json', ...hdr()}, body: JSON.stringify(pole) });
+  if (r.status === 403) throw new Error("FORBIDDEN");
+  if (!r.ok) throw new Error(await r.text());
+}
+async function apiDelete(id){
+  const r = await fetch(`${API}/${encodeURIComponent(id)}`, { method:'DELETE', headers: hdr() });
+  if (r.status === 403) throw new Error("FORBIDDEN");
+  if (!r.ok) throw new Error(await r.text());
+}
+async function apiTested(id, tested, testedBy){
+  const r = await fetch(`${API}/${encodeURIComponent(id)}/tested`, { method:'POST', headers:{'Content-Type':'application/json', ...hdr()}, body: JSON.stringify({ tested, testedBy }) });
+  if (r.status === 403) throw new Error("FORBIDDEN");
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// Save one pole: update local immediately, push to server, queue on failure.
+async function persist(pole){
+  const i = poles.findIndex(p => p.id === pole.id);
+  if (i >= 0) poles[i] = pole; else poles.push(pole);
+  cache(); redrawMarkers();
+  try { await apiPut(pole); setSync('ok', 'synced'); }
+  catch (e) {
+    if (e.message === "FORBIDDEN") { showToast("Admin code required for that", true); await refresh(true); return; }
+    pending = pending.filter(x => x.id !== pole.id); pending.push({ op:'put', id: pole.id, pole });
+    savePending(); setSync('bad', `${pending.length} unsynced`);
+  }
+}
+async function remove(id){
+  const cascadeSpanIds = poles.filter(p => p.itemType === 'span' && (p.fromId === id || p.toId === id)).map(p => p.id);
+  poles = poles.filter(p => p.id !== id && !cascadeSpanIds.includes(p.id));
+  cache(); redrawMarkers();
+  try {
+    await apiDelete(id);
+    for (const sid of cascadeSpanIds) await apiDelete(sid);
+    setSync('ok', 'synced');
+  }
+  catch (e) {
+    if (e.message === "FORBIDDEN") { showToast("Admin code required for that", true); await refresh(true); return; }
+    pending = pending.filter(x => x.id !== id); pending.push({ op:'del', id });
+    cascadeSpanIds.forEach(sid => { pending = pending.filter(x => x.id !== sid); pending.push({ op:'del', id: sid }); });
+    savePending(); setSync('bad', `${pending.length} unsynced`);
+  }
+}
+async function setTested(id, tested, testedBy){
+  const i = poles.findIndex(p => p.id === id); if (i < 0) return null;
+  poles[i] = { ...poles[i], tested, testedAt: tested ? new Date().toISOString() : null, testedBy: tested ? (testedBy || poles[i].testedBy || "") : null };
+  cache(); redrawMarkers();
+  try { const u = await apiTested(id, tested, testedBy); poles[i] = u; cache(); redrawMarkers(); setSync('ok', 'synced'); return u; }
+  catch (e) {
+    if (e.message === "FORBIDDEN") { showToast("Crew or admin code required", true); await refresh(true); return null; }
+    pending = pending.filter(x => !(x.id === id && x.op === 'tested')); pending.push({ op:'tested', id, tested, testedBy });
+    savePending(); setSync('bad', `${pending.length} unsynced`);
+    return poles[i];
+  }
+}
+async function flushPending(){
+  if (!pending.length) return;
+  const still = [];
+  for (const job of pending) {
+    try {
+      if (job.op === 'put') await apiPut(job.pole);
+      else if (job.op === 'del') await apiDelete(job.id);
+      else if (job.op === 'tested') await apiTested(job.id, job.tested, job.testedBy);
+    } catch (e) { if (e.message !== "FORBIDDEN") still.push(job); }
+  }
+  pending = still; savePending();
+}
+async function refresh(silent){
+  setSync('', 'syncing');
+  try {
+    await flushPending();
+    const r = await fetch(API, { cache:'no-store' });
+    if (!r.ok) throw new Error(await r.text());
+    poles = await r.json();
+    cache(); redrawMarkers();
+    setSync(pending.length ? 'bad' : 'ok', pending.length ? `${pending.length} unsynced` : 'synced');
+    if (!silent) showToast("Up to date");
+  } catch (e) {
+    setSync('bad', 'offline');
+    if (!silent) showToast("Can't reach server — showing last known data", true);
+  }
+}
+window.addEventListener('online', () => refresh(true));
+
+/* ---------------- main map ---------------- */
+const SAT_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SAT_ATTR = 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics';
+const map = L.map('map', { zoomControl: false }).setView([35.4676, -97.5164], 17);
+L.tileLayer(SAT_URL, { maxZoom: 21, maxNativeZoom: 19, attribution: SAT_ATTR }).addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
+const markerLayer = L.layerGroup().addTo(map);
+const boundaryLayer = L.layerGroup().addTo(map);
+const spanLayer = L.layerGroup().addTo(map);
+const markerById = {};
+let firstFit = false;
+let redrawAreaId = null; // when set, the next 4-corner pick redraws this item's boundary instead of creating a new item
+let pendingBoundary = null;
+
+function daysSince(iso){ return (Date.now() - new Date(iso).getTime()) / 86400000; }
+function poleState(p){ // 'untested' | 'due' | 'ok'
+  if (!p.tested || !p.testedAt) return 'untested';
+  return daysSince(p.testedAt) >= RETEST_DAYS ? 'due' : 'ok';
+}
+function nextDueDate(p){
+  if (!p.tested || !p.testedAt) return null;
+  const d = new Date(p.testedAt); d.setDate(d.getDate() + RETEST_DAYS); return d;
+}
+const STATE_COLOR = { untested:'#ff5b5b', due:'#ffb020', ok:'#2fbf71' };
+
+function markerFor(p){
+  const state = poleState(p);
+  const info = itemTypeInfo(p.itemType || 'pole');
+  if (!p.itemType || p.itemType === 'pole') {
+    return L.circleMarker([p.lat, p.lng], { radius: 9, color:'#fff', weight:2, fillColor: STATE_COLOR[state], fillOpacity: 0.95 });
+  }
+  const color = info.hasTest ? STATE_COLOR[state] : '#3ba7ff';
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="width:24px;height:24px;border-radius:50%;background:${color};border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 1px 5px rgba(0,0,0,.5);">${info.icon}</div>`,
+    iconSize: [24,24], iconAnchor: [12,12]
+  });
+  return L.marker([p.lat, p.lng], { icon });
+}
+function redrawMarkers(){
+  markerLayer.clearLayers();
+  boundaryLayer.clearLayers();
+  spanLayer.clearLayers();
+  let tested = 0, due = 0, testableCount = 0;
+  const pointItems = poles.filter(p => p.itemType !== 'span');
+  pointItems.forEach(p => {
+    const info = itemTypeInfo(p.itemType||'pole');
+    if (info.hasTest) {
+      testableCount++;
+      const state = poleState(p);
+      if (p.tested) tested++;
+      if (state === 'due') due++;
+    }
+    if (p.boundary && p.boundary.length >= 3) {
+      L.polygon(p.boundary.map(b => [b.lat, b.lng]), { color:'#ffb020', weight:2, fillOpacity:.12 }).addTo(boundaryLayer);
+    }
+    const m = markerFor(p);
+    m.bindTooltip(String(p.poleId), { permanent: true, direction: 'top', offset: [0,-8], className: 'pole-label' });
+    m.on('click', () => {
+      if (spanPickActive) { pickSpanEndpoint(p); return; }
+      if (selectMode) { toggleSelect(p.id); return; }
+      if (measureActive) { addMeasurePoint([p.lat, p.lng]); return; }
+      openView(p.id);
+    });
+    m.addTo(markerLayer);
+    markerById[p.id] = m;
+  });
+  poles.filter(p => p.itemType === 'span').forEach(sp => {
+    const a = poles.find(x => x.id === sp.fromId), b = poles.find(x => x.id === sp.toId);
+    if (!a || !b) return;
+    const line = L.polyline([[a.lat,a.lng],[b.lat,b.lng]], { color:'#3ba7ff', weight:4, dashArray:'2,7' });
+    line.bindTooltip(sp.size || 'span size not set', { permanent:true, direction:'center', className:'pole-label' });
+    line.on('click', () => openView(sp.id));
+    line.addTo(spanLayer);
+    markerById[sp.id] = line;
+  });
+  $('count').textContent = `${pointItems.length} items · ${testableCount} testable · ${tested} tested · ${testableCount - tested} remaining` + (due ? ` · ${due} due for retest` : '');
+  $('mListSub').textContent = `${poles.length} items · ${testableCount - tested} still to test`;
+  if (poles.length && !firstFit) { fitAll(); firstFit = true; }
+}
+function fitAll(){
+  if (!poles.length) { showToast("No poles yet."); return; }
+  map.fitBounds(poles.map(p => [p.lat, p.lng]), { padding: [50,50] });
+}
+$('fitBtn').onclick = fitAll;
+
+/* ---------------- distance measure tool ---------------- */
+function distFeet(lat1,lng1,lat2,lng2){
+  const R = 20925646.325; // earth radius, feet
+  const toRad = d => d*Math.PI/180;
+  const dLat = toRad(lat2-lat1), dLng = toRad(lng2-lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R * 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function fmtDist(ft){ return ft >= 1000 ? (ft/5280).toFixed(2) + " mi" : Math.round(ft) + " ft"; }
+
+let measureActive = false, measurePts = [];
+const measureLayer = L.layerGroup().addTo(map);
+const measureBtn = $('measureBtn');
+
+measureBtn.onclick = () => {
+  measureActive = !measureActive;
+  measureBtn.classList.toggle('active', measureActive);
+  $('measureBanner').classList.toggle('hidden', !measureActive);
+  clearMeasure();
+};
+map.on('click', e => {
+  if (batchMode) { quickDropPole(e.latlng.lat, e.latlng.lng); return; }
+  if (areaPickActive) { addAreaPoint([e.latlng.lat, e.latlng.lng]); return; }
+  if (measureActive) addMeasurePoint([e.latlng.lat, e.latlng.lng]);
+});
+
+/* ---------------- area capture: drop 4 corner pins for a pit / building footprint ---------------- */
+let areaPickActive = false, areaPickPts = [];
+const areaPickLayer = L.layerGroup().addTo(map);
+$('choiceAreaBtn').onclick = () => {
+  hide($('addChoiceOverlay'));
+  areaPickActive = true; areaPickPts = []; areaPickLayer.clearLayers();
+  $('areaPickCountText').textContent = "0 of 4 corners dropped.";
+  show($('areaPickBanner'));
+  showToast("Tap the 4 corners of the area, in order around its edge");
+};
+$('areaPickCancelBtn').onclick = () => {
+  areaPickActive = false; redrawAreaId = null; areaPickLayer.clearLayers(); hide($('areaPickBanner'));
+};
+function addAreaPoint(ll){
+  areaPickPts.push(ll);
+  L.circleMarker(ll, { radius: 7, color:'#fff', weight:2, fillColor:'#ffb020', fillOpacity:1 }).addTo(areaPickLayer);
+  if (areaPickPts.length > 1) L.polyline(areaPickPts, { color:'#ffb020', weight:3 }).addTo(areaPickLayer);
+  $('areaPickCountText').textContent = `${areaPickPts.length} of 4 corners dropped.`;
+  if (areaPickPts.length === 4) {
+    L.polygon(areaPickPts, { color:'#ffb020', weight:3, fillOpacity:.15 }).addTo(areaPickLayer);
+    setTimeout(finishAreaPick, 250);
+  }
+}
+function finishAreaPick(){
+  areaPickActive = false; hide($('areaPickBanner'));
+  const boundary = areaPickPts.map(ll => ({ lat: ll[0], lng: ll[1] }));
+  const centLat = boundary.reduce((s,b) => s + b.lat, 0) / boundary.length;
+  const centLng = boundary.reduce((s,b) => s + b.lng, 0) / boundary.length;
+  areaPickLayer.clearLayers();
+  if (redrawAreaId) {
+    const id = redrawAreaId; redrawAreaId = null;
+    const p = poles.find(x => x.id === id);
+    if (p) persist({ ...p, boundary, lat: centLat, lng: centLng, updatedAt: new Date().toISOString() })
+      .then(() => showToast(`${p.poleId} boundary updated`));
+    return;
+  }
+  pendingCoords = { lat: centLat, lng: centLng };
+  pendingBoundary = boundary;
+  openForm(null);
+}
+
+/* ---------------- conductor spans: pick two existing structures, connect with a labeled line ---------------- */
+let spanPickActive = false, spanFrom = null;
+function startSpanPick(){
+  spanPickActive = true; spanFrom = null;
+  $('spanPickHint').textContent = "Tap the first pole/structure this conductor leaves from.";
+  show($('spanPickBanner'));
+  showToast("Tap two poles or structures to connect");
+}
+$('spanPickCancelBtn').onclick = () => { spanPickActive = false; spanFrom = null; hide($('spanPickBanner')); };
+function pickSpanEndpoint(p){
+  if (!spanFrom) {
+    spanFrom = p;
+    $('spanPickHint').textContent = `From ${p.poleId} — now tap where it connects to.`;
+    return;
+  }
+  if (p.id === spanFrom.id) { showToast("Pick a different second point", true); return; }
+  const from = spanFrom; spanPickActive = false; spanFrom = null; hide($('spanPickBanner'));
+  openSpanForm(null, from, p);
+}
+let spanEditingId = null, spanFromId = null, spanToId = null;
+function openSpanForm(existing, from, to){
+  spanEditingId = existing ? existing.id : null;
+  spanFromId = existing ? existing.fromId : from.id;
+  spanToId = existing ? existing.toId : to.id;
+  const fromP = poles.find(x => x.id === spanFromId), toP = poles.find(x => x.id === spanToId);
+  $('spanFormTitle').textContent = existing ? "Edit Conductor Span" : "New Conductor Span";
+  $('spanFormBetween').textContent = fromP && toP ? `Between ${fromP.poleId} and ${toP.poleId}` : '';
+  $('spanSize').value = existing ? (existing.size || '') : '';
+  $('spanNotes').value = existing ? (existing.notes || '') : '';
+  show($('spanFormOverlay'));
+}
+$('spanCancelBtn').onclick = () => hide($('spanFormOverlay'));
+$('spanSaveBtn').onclick = async () => {
+  const size = $('spanSize').value.trim();
+  const notes = $('spanNotes').value.trim();
+  hide($('spanFormOverlay'));
+  const fromP = poles.find(x => x.id === spanFromId), toP = poles.find(x => x.id === spanToId);
+  const label = fromP && toP ? `${fromP.poleId} \u2194 ${toP.poleId}` : (size || 'Span');
+  if (spanEditingId) {
+    const p = poles.find(x => x.id === spanEditingId); if (!p) return;
+    await persist({ ...p, poleId: label, size, notes, updatedAt: new Date().toISOString() });
+    showToast("Span updated");
+    return;
+  }
+  if (!fromP || !toP) { showToast("Couldn't find both endpoints", true); return; }
+  const span = { id: 's_' + Date.now(), itemType: 'span', poleId: label, fromId: spanFromId, toId: spanToId,
+    size, notes, createdAt: new Date().toISOString(),
+    lat: (fromP.lat + toP.lat) / 2, lng: (fromP.lng + toP.lng) / 2 };
+  await persist(span);
+  showToast("Conductor span saved");
+};
+
+/* ---------------- batch add: drop several pins fast, fill details later ---------------- */
+let batchMode = false, batchCount = 0;
+$('choiceBatchBtn').onclick = () => {
+  hide($('addChoiceOverlay'));
+  batchMode = true; batchCount = 0;
+  $('batchCountText').textContent = "0 dropped.";
+  show($('batchBanner'));
+  showToast("Batch mode on — tap the map to drop pins");
+};
+$('batchDoneBtn').onclick = () => {
+  batchMode = false;
+  hide($('batchBanner'));
+  showToast(batchCount ? `Added ${batchCount} pole(s) — open Pole List to fill in details` : "Batch mode off");
+};
+$('batchDropHereBtn').onclick = () => {
+  if (meMarker) { const ll = meMarker.getLatLng(); quickDropPole(ll.lat, ll.lng); return; }
+  if (!navigator.geolocation) { showToast("No GPS available on this browser.", true); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => quickDropPole(pos.coords.latitude, pos.coords.longitude),
+    err => showToast("GPS error: " + err.message, true),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+  );
+};
+async function quickDropPole(lat, lng){
+  const poleId = nextPoleId();
+  const info = itemTypeInfo(pendingItemType);
+  const pole = { id: 'p_' + Date.now() + '_' + Math.floor(Math.random()*1000), poleId, itemType: pendingItemType,
+    components: [], notes: '', lat, lng, createdAt: new Date().toISOString(),
+    tested: false, testedAt: null, testedBy: null, inventory: info.hasInventory ? [] : undefined };
+  await persist(pole);
+  batchCount++;
+  $('batchCountText').textContent = `${batchCount} dropped.`;
+}
+
+/* ---------------- move multiple pins together ---------------- */
+let selectMode = false;
+const selectedIds = new Set();
+const selectionLayer = L.layerGroup().addTo(map);
+
+let selectPurpose = 'move'; // 'move' | 'test'
+function enterSelectMode(purpose){
+  hide($('menuOverlay'));
+  measureActive = false; $('measureBanner').classList.add('hidden');
+  batchMode = false; hide($('batchBanner'));
+  selectMode = true; selectPurpose = purpose; selectedIds.clear(); selectionLayer.clearLayers();
+  $('selectMoveBtn').classList.toggle('hidden', purpose !== 'move');
+  $('selectMarkTestedBtn').classList.toggle('hidden', purpose !== 'test');
+  $('selectDeleteBtn').classList.toggle('hidden', purpose !== 'delete');
+  updateSelectBanner();
+  show($('selectBanner'));
+  showToast("Tap items to select them");
+}
+$('mMultiMove').onclick = () => enterSelectMode('move');
+$('mMultiTest').onclick = () => enterSelectMode('test');
+$('mMultiDelete').onclick = () => enterSelectMode('delete');
+$('selectDeleteBtn').onclick = async () => {
+  if (!selectedIds.size) { showToast("Select at least one item first", true); return; }
+  const ids = [...selectedIds];
+  if (!confirm(`Delete ${ids.length} item(s) from the shared inventory? This cannot be undone.`)) return;
+  hide($('selectBanner'));
+  for (const id of ids) await remove(id);
+  showToast(`Deleted ${ids.length} item(s)`);
+  exitSelectMode();
+};
+$('selectMarkTestedBtn').onclick = () => {
+  if (!selectedIds.size) { showToast("Select at least one pole first", true); return; }
+  const ids = [...selectedIds];
+  hide($('selectBanner'));
+  promptTesterName(async (name) => {
+    const updated = [];
+    for (const id of ids) { const u = await setTested(id, true, name); if (u) updated.push(u); }
+    if (updated.length) await sendBulkTestEmail(updated, name);
+    showToast(`Marked ${updated.length} pole(s) tested`);
+    exitSelectMode();
+  });
+};
+async function sendBulkTestEmail(list, testerName){
+  const when = new Date().toLocaleString();
+  const lines = list.map(p => {
+    const comps = (p.components||[]).length ? p.components.join(", ") : "none listed";
+    return `${p.poleId} — ${comps}${p.notes ? " — " + p.notes : ""} — https://maps.google.com/?q=${p.lat},${p.lng}`;
+  }).join("\n");
+  const subject = `${list.length} poles TESTED — ${when}`;
+  const body = `Tested by: ${testerName}\nTime: ${when}\n\n${lines}`;
+  if (EMAILJS_ON) {
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email: NOTIFY_EMAIL, subject, pole_id: `${list.length} poles`, tested_by: testerName, tested_at: when,
+        components: `${list.length} poles tested`, notes: body, lat: "", lng: "", map_link: "https://maps.google.com/", message: body
+      });
+      showToast("Bulk email sent");
+    } catch (e) { showToast("Marked tested, but bulk email failed: " + (e.text || e.message), true); }
+  } else {
+    window.location.href = `mailto:${NOTIFY_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+}
+function toggleSelect(id){
+  if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+  redrawSelectionRings();
+  updateSelectBanner();
+}
+function redrawSelectionRings(){
+  selectionLayer.clearLayers();
+  selectedIds.forEach(id => {
+    const p = poles.find(x => x.id === id); if (!p) return;
+    L.circleMarker([p.lat, p.lng], { radius: 14, color:'#ffe066', weight:3, fill:false }).addTo(selectionLayer);
+  });
+}
+function updateSelectBanner(){ $('selectCountText').textContent = `${selectedIds.size} pole(s) selected.`; }
+function exitSelectMode(){
+  selectMode = false; selectedIds.clear(); selectionLayer.clearLayers(); hide($('selectBanner'));
+}
+$('selectCancelBtn').onclick = exitSelectMode;
+$('selectClearBtn').onclick = () => { selectedIds.clear(); redrawSelectionRings(); updateSelectBanner(); };
+
+let groupMoveMap = null, groupHandle = null, groupGhosts = [], groupStart = null, groupIds = [];
+$('selectMoveBtn').onclick = () => {
+  if (!selectedIds.size) { showToast("Select at least one pole first", true); return; }
+  groupIds = [...selectedIds];
+  hide($('selectBanner'));
+  openGroupMove();
+};
+function openGroupMove(){
+  const chosen = groupIds.map(id => poles.find(x => x.id === id)).filter(Boolean);
+  if (!chosen.length) return;
+  const centLat = chosen.reduce((s,p) => s + p.lat, 0) / chosen.length;
+  const centLng = chosen.reduce((s,p) => s + p.lng, 0) / chosen.length;
+  const bounds = L.latLngBounds(chosen.map(p => [p.lat, p.lng]));
+  show($('groupMoveOverlay'));
+  if (!groupMoveMap) {
+    groupMoveMap = L.map('groupMoveMap', { zoomControl: false }).setView([centLat, centLng], 19);
+    L.tileLayer(SAT_URL, { maxZoom: 21, maxNativeZoom: 19, attribution: SAT_ATTR }).addTo(groupMoveMap);
+    L.control.zoom({ position: 'bottomright' }).addTo(groupMoveMap);
+  }
+  setTimeout(() => {
+    groupMoveMap.invalidateSize();
+    if (chosen.length > 1) groupMoveMap.fitBounds(bounds.pad(0.5), { maxZoom: 20 });
+    else groupMoveMap.setView([centLat, centLng], 20);
+  }, 50);
+  if (groupHandle) { groupMoveMap.removeLayer(groupHandle); groupHandle = null; }
+  groupGhosts.forEach(g => groupMoveMap.removeLayer(g.marker));
+  groupGhosts = chosen.map(p => ({
+    id: p.id, origLat: p.lat, origLng: p.lng,
+    marker: L.circleMarker([p.lat, p.lng], { radius: 8, color:'#fff', weight:2, fillColor:'#3ba7ff', fillOpacity:.95 }).addTo(groupMoveMap)
+  }));
+  const handleIcon = L.divIcon({ className:'', html:'<div style="font-size:30px;line-height:30px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.7));">🧲</div>', iconSize:[30,30], iconAnchor:[15,15] });
+  groupStart = { lat: centLat, lng: centLng };
+  groupHandle = L.marker([centLat, centLng], { icon: handleIcon, draggable: true }).addTo(groupMoveMap);
+  groupHandle.on('drag', () => {
+    const c = groupHandle.getLatLng();
+    const dLat = c.lat - groupStart.lat, dLng = c.lng - groupStart.lng;
+    groupGhosts.forEach(g => g.marker.setLatLng([g.origLat + dLat, g.origLng + dLng]));
+  });
+}
+$('cancelGroupMoveBtn').onclick = () => { hide($('groupMoveOverlay')); exitSelectMode(); };
+$('confirmGroupMoveBtn').onclick = async () => {
+  const c = groupHandle.getLatLng();
+  const dLat = c.lat - groupStart.lat, dLng = c.lng - groupStart.lng;
+  hide($('groupMoveOverlay'));
+  for (const g of groupGhosts) {
+    const p = poles.find(x => x.id === g.id); if (!p) continue;
+    await persist({ ...p, lat: g.origLat + dLat, lng: g.origLng + dLng });
+  }
+  showToast(`Moved ${groupGhosts.length} pole(s)`);
+  exitSelectMode();
+};
+
+function clearMeasure(){ measurePts = []; measureLayer.clearLayers(); $('measureResult').textContent = ""; }
+function addMeasurePoint(ll){
+  if (measurePts.length >= 2) clearMeasure();
+  measurePts.push(ll);
+  L.circleMarker(ll, { radius: 7, color:'#fff', weight:2, fillColor:'#ffb020', fillOpacity:1 }).addTo(measureLayer);
+  if (measurePts.length === 2) {
+    L.polyline(measurePts, { color:'#ffb020', weight:3, dashArray:'6,6' }).addTo(measureLayer);
+    const ft = distFeet(measurePts[0][0], measurePts[0][1], measurePts[1][0], measurePts[1][1]);
+    $('measureResult').innerHTML = `<b>${fmtDist(ft)}</b>`;
+  }
+}
+
+/* ---------------- share links (pole + saved map view) ---------------- */
+function baseUrl(){ return location.origin + location.pathname; }
+async function shareOrCopy(url, title){
+  if (navigator.share) { try { await navigator.share({ title, url }); return; } catch(e) { /* user cancelled or unsupported, fall through */ } }
+  try { await navigator.clipboard.writeText(url); showToast("Link copied — paste it in a text or email"); }
+  catch(e) { prompt("Copy this link:", url); }
+}
+function poleLink(p){ return `${baseUrl()}?pole=${encodeURIComponent(p.poleId)}`; }
+function viewLink(v){ return `${baseUrl()}?lat=${v.lat.toFixed(6)}&lng=${v.lng.toFixed(6)}&z=${v.zoom}`; }
+
+$('shareBtn').onclick = () => {
+  const p = poles.find(x => x.id === viewingId); if (!p) return;
+  shareOrCopy(poleLink(p), `Pole ${p.poleId} — NLC Campus Ops`);
+};
+
+/* ---------------- saved views (device-local bookmarks) ---------------- */
+const VIEWS_KEY = "campusPolesSavedViews";
+function loadViews(){ try { return JSON.parse(localStorage.getItem(VIEWS_KEY)) || []; } catch(e){ return []; } }
+function saveViewsList(v){ localStorage.setItem(VIEWS_KEY, JSON.stringify(v)); }
+let savedViews = loadViews();
+
+/* ---------------- policies & specs (shared, admin-editable) ---------------- */
+const POLICIES_CACHE_KEY = "campusPoliciesCache";
+let policiesDoc = (() => { try { return JSON.parse(localStorage.getItem(POLICIES_CACHE_KEY)) || { content: "", updatedAt: null, updatedBy: null }; } catch(e){ return { content: "", updatedAt: null, updatedBy: null }; } })();
+function cachePolicies(){ localStorage.setItem(POLICIES_CACHE_KEY, JSON.stringify(policiesDoc)); }
+async function fetchPolicies(){
+  try {
+    const r = await fetch(POLICIES_API);
+    if (r.ok) { policiesDoc = await r.json(); cachePolicies(); }
+  } catch (e) { /* offline — use cached copy */ }
+}
+function renderPoliciesRead(){
+  $('policiesText').textContent = policiesDoc.content || "Nothing added yet.";
+  $('policiesMeta').textContent = policiesDoc.updatedAt
+    ? "Last updated " + new Date(policiesDoc.updatedAt).toLocaleString() + (policiesDoc.updatedBy ? " by " + policiesDoc.updatedBy : "")
+    : "Not set yet.";
+}
+$('mPolicies').onclick = async () => {
+  hide($('menuOverlay'));
+  show($('policiesOverlay'));
+  renderPoliciesRead();
+  show($('policiesReadView')); hide($('policiesEditView'));
+  await fetchPolicies();
+  renderPoliciesRead();
+};
+$('policiesCloseBtn').onclick = () => hide($('policiesOverlay'));
+$('policiesEditBtn').onclick = () => {
+  $('policiesInput').value = policiesDoc.content || "";
+  hide($('policiesReadView')); show($('policiesEditView'));
+};
+$('policiesCancelEditBtn').onclick = () => { hide($('policiesEditView')); show($('policiesReadView')); };
+$('policiesSaveBtn').onclick = async () => {
+  const content = $('policiesInput').value;
+  hide($('policiesEditView')); show($('policiesReadView'));
+  try {
+    const r = await fetch(POLICIES_API, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...hdr() }, body: JSON.stringify({ content, updatedBy: localStorage.getItem(LAST_TESTER_KEY) || "" }) });
+    if (r.status === 403) throw new Error("FORBIDDEN");
+    if (!r.ok) throw new Error(await r.text());
+    policiesDoc = await r.json(); cachePolicies(); renderPoliciesRead();
+    showToast("Policies & specs saved");
+  } catch (e) {
+    showToast(e.message === "FORBIDDEN" ? "Admin code required" : "Save failed — check connection", true);
+  }
+};
+
+$('mViews').onclick = () => { hide($('menuOverlay')); openViews(); };
+$('viewsClose').onclick = () => hide($('viewsOverlay'));
+function openViews(){ $('viewNameInput').value = ""; renderViews(); show($('viewsOverlay')); }
+function renderViews(){
+  const body = $('savedViewsList'); body.innerHTML = "";
+  if (!savedViews.length) { body.innerHTML = '<p style="text-align:center;">No saved views yet.</p>'; return; }
+  savedViews.forEach(v => {
+    const d = document.createElement('div');
+    d.className = 'list-item';
+    d.innerHTML = `<div class="st" style="background:var(--accent)"></div>
+      <div style="flex:1;"><div class="name">${esc(v.name)}</div><div class="meta">${v.lat.toFixed(5)}, ${v.lng.toFixed(5)} · zoom ${v.zoom}</div></div>`;
+    const jumpBtn = document.createElement('button');
+    jumpBtn.className = 'icon-btn'; jumpBtn.textContent = 'Go'; jumpBtn.style.marginRight = '4px';
+    jumpBtn.onclick = () => { hide($('viewsOverlay')); followMe = false; map.setView([v.lat, v.lng], v.zoom); };
+    const shareBtn2 = document.createElement('button');
+    shareBtn2.className = 'icon-btn'; shareBtn2.textContent = '🔗'; shareBtn2.style.marginRight = '4px';
+    shareBtn2.onclick = () => shareOrCopy(viewLink(v), `${v.name} — NLC Campus Ops`);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'icon-btn'; delBtn.textContent = '🗑';
+    delBtn.onclick = () => { savedViews = savedViews.filter(x => x.id !== v.id); saveViewsList(savedViews); renderViews(); };
+    d.appendChild(jumpBtn); d.appendChild(shareBtn2); d.appendChild(delBtn);
+    body.appendChild(d);
+  });
+}
+$('saveViewBtn').onclick = () => {
+  const name = $('viewNameInput').value.trim();
+  if (!name) { showToast("Give this view a name first", true); return; }
+  const c = map.getCenter();
+  savedViews.push({ id: 'v_' + Date.now(), name, lat: c.lat, lng: c.lng, zoom: map.getZoom() });
+  saveViewsList(savedViews);
+  $('viewNameInput').value = "";
+  renderViews();
+  showToast(`Saved "${name}"`);
+};
+
+/* ---------------- open from a shared link ---------------- */
+const urlParams = new URLSearchParams(location.search);
+const linkedPoleId = urlParams.get('pole');
+const linkedLat = parseFloat(urlParams.get('lat')), linkedLng = parseFloat(urlParams.get('lng')), linkedZoom = parseInt(urlParams.get('z'), 10);
+if (!isNaN(linkedLat) && !isNaN(linkedLng)) {
+  map.setView([linkedLat, linkedLng], isNaN(linkedZoom) ? 19 : linkedZoom);
+  firstFit = true; // don't let redrawMarkers override this with fitAll
+}
+function tryOpenLinkedPole(){
+  if (!linkedPoleId) return;
+  const p = poles.find(x => String(x.poleId) === linkedPoleId);
+  if (p) { firstFit = true; map.setView([p.lat, p.lng], 20); openView(p.id); }
+}
+
+redrawMarkers();
+tryOpenLinkedPole();
+applyRole();
+checkRole();
+refresh(true).then(tryOpenLinkedPole); // in case the pole wasn't in local cache yet
+if (!poles.length && !linkedPoleId && isNaN(linkedLat)) navigator.geolocation && navigator.geolocation.getCurrentPosition(
+  pos => { if (!firstFit) map.setView([pos.coords.latitude, pos.coords.longitude], 18); }, () => {}, { enableHighAccuracy:false, timeout:5000 });
+
+/* ---------------- next ID suggestion (per area) ---------------- */
+function nextIdForArea(code){
+  let max = 0;
+  const re = new RegExp('^' + code + '(\\d+)$', 'i');
+  poles.forEach(p => { const m = String(p.poleId).match(re); if (m) max = Math.max(max, parseInt(m[1],10)); });
+  return code + (max + 1);
+}
+function nextPoleId(){ return nextIdForArea(AREAS[0] ? AREAS[0].code : "NLC-"); }
+
+function renderAreaChips(selectedCode){
+  const row = $('areaRow'); row.innerHTML = "";
+  AREAS.forEach(a => {
+    const c = document.createElement('div');
+    c.className = 'chip' + (a.code === selectedCode ? ' selected' : '');
+    c.textContent = a.label;
+    c.onclick = () => {
+      row.querySelectorAll('.chip').forEach(x => x.classList.remove('selected'));
+      c.classList.add('selected');
+      poleIdInput.value = nextIdForArea(a.code);
+    };
+    row.appendChild(c);
+  });
+}
+
+/* ---------------- live location ---------------- */
+let meWatch = null, meMarker = null, meCircle = null, followMe = false;
+const locateBtn = $('locateBtn');
+locateBtn.onclick = () => {
+  if (meWatch !== null) { stopLocate(); return; }
+  if (!navigator.geolocation) { showToast("No GPS on this browser.", true); return; }
+  followMe = true; locateBtn.classList.add('active');
+  meWatch = navigator.geolocation.watchPosition(pos => {
+    const ll = [pos.coords.latitude, pos.coords.longitude];
+    if (!meMarker) {
+      meMarker = L.marker(ll, { icon: L.divIcon({ className:'', html:'<div class="me-dot"></div>', iconSize:[16,16], iconAnchor:[8,8] }), interactive:false }).addTo(map);
+      meCircle = L.circle(ll, { radius: pos.coords.accuracy, color:'#3ba7ff', weight:1, fillOpacity:.12, interactive:false }).addTo(map);
+    } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll); meCircle.setRadius(pos.coords.accuracy); }
+    if (followMe) map.setView(ll, Math.max(map.getZoom(), 18));
+  }, err => { showToast("Location error: " + err.message, true); stopLocate(); },
+  { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
+};
+map.on('dragstart', () => { followMe = false; });
+function stopLocate(){
+  if (meWatch !== null) navigator.geolocation.clearWatch(meWatch);
+  meWatch = null; followMe = false; locateBtn.classList.remove('active');
+  if (meMarker) { map.removeLayer(meMarker); meMarker = null; }
+  if (meCircle) { map.removeLayer(meCircle); meCircle = null; }
+}
+
+/* ---------------- menu ---------------- */
+$('menuBtn').onclick = () => show($('menuOverlay'));
+$('menuClose').onclick = () => hide($('menuOverlay'));
+$('menuOverlay').addEventListener('click', e => { if (e.target === $('menuOverlay')) hide($('menuOverlay')); });
+$('mList').onclick = () => { hide($('menuOverlay')); openList(); };
+$('mAccess').onclick = () => { hide($('menuOverlay')); openAccess(); };
+function openAccess(){
+  $('accessInfo').textContent = role === 'viewer'
+    ? "You're viewing only. Staff code = see work orders. Operator code = create and update work orders. Poles are edited in the Pole Yard app."
+    : `Signed in as ${role === 'admin' ? 'operator' : 'staff'}.`;
+  $('accessKey').value = "";
+  $('accessOut').classList.toggle('hidden', role === 'viewer');
+  show($('accessOverlay'));
+}
+$('accessClose').onclick = () => hide($('accessOverlay'));
+$('accessGo').onclick = async () => {
+  const k = $('accessKey').value.trim(); if (!k) return;
+  accessKey = k; localStorage.setItem(KEY_KEY, k);
+  await checkRole();
+  if (role === 'viewer') { accessKey = ""; localStorage.removeItem(KEY_KEY); showToast("Code not recognized", true); }
+  else { hide($('accessOverlay')); showToast(`Unlocked: ${role}`); }
+};
+$('accessOut').onclick = async () => {
+  accessKey = ""; localStorage.removeItem(KEY_KEY); await checkRole(); hide($('accessOverlay')); showToast("Back to viewer");
+};
+$('mRefresh').onclick = () => { hide($('menuOverlay')); refresh(false); };
+$('mPrint').onclick = () => { hide($('menuOverlay')); printInventory(); };
+
+function printInventory(){
+  if (!poles.length) { showToast("No poles to print."); return; }
+  const testable = poles.filter(p => itemTypeInfo(p.itemType||'pole').hasTest)
+    .sort((a,b) => String(a.poleId).localeCompare(String(b.poleId), undefined, { numeric:true }));
+  const structures = poles.filter(p => p.itemType !== 'span' && !itemTypeInfo(p.itemType||'pole').hasTest)
+    .sort((a,b) => String(a.poleId).localeCompare(String(b.poleId), undefined, { numeric:true }));
+  let tested = 0, due = 0;
+  const trs = testable.map(p => {
+    const info = itemTypeInfo(p.itemType||'pole');
+    const state = poleState(p);
+    if (p.tested) tested++; if (state === 'due') due++;
+    const statusLabel = state === 'untested' ? 'NOT TESTED' : (state === 'due' ? 'DUE FOR RETEST' : 'TESTED');
+    const dueDate = nextDueDate(p);
+    return `<tr>
+      <td>${esc(p.poleId)}</td>
+      <td>${esc(info.label)}</td>
+      <td class="s-${state}">${statusLabel}</td>
+      <td>${esc((p.components||[]).join(', ') || '—')}</td>
+      <td>${esc(p.notes || '—')}</td>
+      <td>${esc(p.testedBy || '—')}</td>
+      <td>${p.testedAt ? new Date(p.testedAt).toLocaleDateString() : '—'}</td>
+      <td>${dueDate ? dueDate.toLocaleDateString() : '—'}</td>
+      <td>${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}</td>
+    </tr>`;
+  }).join('');
+  const structRows = structures.map(p => {
+    const sInfo = itemTypeInfo(p.itemType||'pole');
+    const items = sInfo.hasInventory
+      ? ((p.inventory||[]).length ? p.inventory.map(i => `${i.name} ×${i.qty}`).join(', ') : '—')
+      : ((p.components||[]).length ? p.components.join(', ') : '—');
+    return `<tr><td>${esc(p.poleId)}</td><td>${esc(sInfo.label)}</td><td>${esc(p.notes || '—')}</td><td>${esc(items)}</td><td>${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}</td></tr>`;
+  }).join('');
+  const structSection = structures.length ? `
+  <h1 style="margin-top:28px;">Buildings, Sheds, Pits, Transformers &amp; Pedestals</h1>
+  <table><thead><tr><th>Name</th><th>Type</th><th>Notes</th><th>Inventory / Components</th><th>GPS</th></tr></thead>
+  <tbody>${structRows}</tbody></table>` : '';
+  const spans = poles.filter(p => p.itemType === 'span')
+    .sort((a,b) => String(a.poleId).localeCompare(String(b.poleId), undefined, { numeric:true }));
+  const spanRows = spans.map(p => `<tr><td>${esc(p.poleId)}</td><td>${esc(p.size || '—')}</td><td>${esc(p.notes || '—')}</td></tr>`).join('');
+  const spanSection = spans.length ? `
+  <h1 style="margin-top:28px;">Conductor Spans</h1>
+  <table><thead><tr><th>Between</th><th>Conductor Size</th><th>Notes</th></tr></thead>
+  <tbody>${spanRows}</tbody></table>` : '';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>NLC Pole Yard Inventory</title>
+  <style>
+    body{font-family:-apple-system,Arial,sans-serif;margin:24px;color:#111;}
+    h1{margin:0 0 2px;font-size:20px;} .meta{color:#555;font-size:12px;margin-bottom:16px;}
+    table{border-collapse:collapse;width:100%;font-size:11px;}
+    th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top;}
+    th{background:#eee;}
+    .s-untested{color:#b00000;font-weight:700;} .s-due{color:#a06000;font-weight:700;} .s-ok{color:#0a7a2f;font-weight:700;}
+    @media print{ body{margin:8mm;} }
+  </style></head><body>
+  <h1>NLC Pole Yard — Inventory</h1>
+  <div class="meta">Printed ${new Date().toLocaleString()} · ${testable.length} testable items · ${tested} tested · ${testable.length-tested} not tested · ${due} due for retest · ${structures.length} other items (buildings, sheds, pits, transformers, pedestals)</div>
+  <table><thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Components</th><th>Notes</th><th>Tested By</th><th>Tested Date</th><th>Retest Due</th><th>GPS</th></tr></thead>
+  <tbody>${trs}</tbody></table>
+  ${structSection}
+  ${spanSection}
+  <script>window.onload = () => setTimeout(() => window.print(), 200);<\/script>
+  </body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) { showToast("Pop-up blocked — allow pop-ups for this site to print.", true); return; }
+  win.document.write(html); win.document.close();
+}
+function esc(str){ const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+$('mExport').onclick = () => {
+  const blob = new Blob([JSON.stringify(poles, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'nlc-poles-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click(); URL.revokeObjectURL(url); hide($('menuOverlay'));
+};
+$('mImport').onclick = () => $('importFile').click();
+$('importFile').onchange = (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const incoming = JSON.parse(reader.result);
+      if (!Array.isArray(incoming)) throw new Error("bad file");
+      const ids = new Set(poles.map(p => p.id));
+      let added = 0;
+      for (const p of incoming) if (!ids.has(p.id)) { await persist(p); added++; }
+      showToast(`Imported ${added} new pole(s)`);
+    } catch (err) { showToast("Import failed — not a valid pole file.", true); }
+    hide($('menuOverlay'));
+  };
+  reader.readAsText(file); e.target.value = "";
+};
+$('mReset').onclick = async () => {
+  const n = poles.filter(p => p.tested).length;
+  if (!n) { showToast("Nothing to reset — no poles marked tested."); return; }
+  if (!confirm(`Reset ${n} tested pole(s) back to NOT TESTED for everyone?\n\nInventory stays. Only test status clears.`)) return;
+  hide($('menuOverlay'));
+  try {
+    const r = await fetch(`${API}/reset`, { method:'POST', headers: hdr() });
+    if (r.status === 403) throw new Error("FORBIDDEN");
+    if (!r.ok) throw new Error(await r.text());
+    await refresh(true);
+    showToast("All poles reset to not tested");
+  } catch (e) { showToast(e.message === "FORBIDDEN" ? "Admin code required" : "Reset failed — check connection", true); }
+};
+
+/* ---------------- pole list ---------------- */
+let listFilter = 'all';
+document.querySelectorAll('.filter-row button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.filter-row button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); listFilter = b.dataset.f; renderList();
+});
+$('listSearch').oninput = renderList;
+$('listClose').onclick = () => hide($('listOverlay'));
+function openList(){ $('listSearch').value = ""; renderList(); show($('listOverlay')); }
+function renderList(){
+  const q = $('listSearch').value.trim().toLowerCase();
+  const body = $('listBody'); body.innerHTML = "";
+  const rows = poles
+    .filter(p => listFilter === 'all' || (itemTypeInfo(p.itemType||'pole').hasTest && poleState(p) === listFilter))
+    .filter(p => !q || String(p.poleId).toLowerCase().includes(q) || (p.notes||'').toLowerCase().includes(q)
+      || (p.components||[]).join(' ').toLowerCase().includes(q) || (p.testedBy||'').toLowerCase().includes(q))
+    .sort((a,b) => String(a.poleId).localeCompare(String(b.poleId), undefined, { numeric:true }));
+  if (!rows.length) { body.innerHTML = '<p style="text-align:center;">No poles match.</p>'; return; }
+  rows.forEach(p => {
+    const info = itemTypeInfo(p.itemType||'pole');
+    const state = poleState(p);
+    const d = document.createElement('div');
+    d.className = 'list-item';
+    let statusText = '';
+    if (info.hasTest) {
+      statusText = state === 'untested' ? '' :
+        (state === 'due' ? ' · DUE, tested ' : ' · tested ') + new Date(p.testedAt).toLocaleDateString() + (p.testedBy ? ' by ' + p.testedBy : '');
+    }
+    const detail = p.itemType === 'span'
+      ? `Conductor: ${p.size || 'size not set'}${p.notes ? ' — ' + p.notes : ''}`
+      : (info.hasInventory
+        ? ((p.inventory||[]).length ? `${p.inventory.length} item type(s) logged` : 'no items logged')
+        : ((p.components||[]).length ? p.components.join(', ') : 'no components'));
+    const dotColor = info.hasTest ? STATE_COLOR[state] : '#3ba7ff';
+    d.innerHTML = `<div class="st" style="background:${dotColor}"></div>
+      <div><div class="name">${info.icon} ${p.poleId}</div>
+      <div class="meta">${detail}${statusText}</div></div>
+      <div class="arrow">›</div>`;
+    d.onclick = () => { hide($('listOverlay')); openView(p.id); };
+    body.appendChild(d);
+  });
+}
+
+/* ---------------- GPS acquire ---------------- */
+const gpsOverlay = $('gpsOverlay'), accRing = $('accRing'), useNowBtn = $('useNowBtn'), markBtn = $('markBtn');
+let watchId = null, samples = [], hardTimeout = null, pendingCoords = null;
+
+/* ---------------- item type picker (first step of adding anything) ---------------- */
+let pendingItemType = 'pole';
+function renderTypeChoices(){
+  const row = $('typeChoiceRow'); row.innerHTML = "";
+  ITEM_TYPES.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'big-btn secondary';
+    b.textContent = `${t.icon} ${t.label}`;
+    b.onclick = () => {
+      pendingItemType = t.key;
+      hide($('typeChoiceOverlay'));
+      $('addChoiceTitle').textContent = `Add ${t.label}`;
+      $('choiceAreaBtn').classList.toggle('hidden', !t.hasArea);
+      show($('addChoiceOverlay'));
+    };
+    row.appendChild(b);
+  });
+  const spanBtn = document.createElement('button');
+  spanBtn.className = 'big-btn secondary';
+  spanBtn.textContent = `${SPAN_TYPE.icon} Conductor Span (Line Between Two)`;
+  spanBtn.onclick = () => { hide($('typeChoiceOverlay')); startSpanPick(); };
+  row.appendChild(spanBtn);
+}
+markBtn.onclick = () => { renderTypeChoices(); show($('typeChoiceOverlay')); };
+$('typeChoiceCancelBtn').onclick = () => hide($('typeChoiceOverlay'));
+$('choiceCancelBtn').onclick = () => hide($('addChoiceOverlay'));
+$('choiceGpsBtn').onclick = () => { hide($('addChoiceOverlay')); startGpsAcquire(); };
+$('choiceManualBtn').onclick = () => {
+  hide($('addChoiceOverlay'));
+  tuneMode = 'manual'; repositionId = null;
+  const c = map.getCenter();
+  openTuneOverlay({ lat: c.lat, lng: c.lng });
+};
+
+function startGpsAcquire(){
+  if (!navigator.geolocation) { showToast("No GPS available on this browser.", true); return; }
+  tuneMode = 'gps';
+  samples = []; useNowBtn.disabled = true; accRing.textContent = "…"; show(gpsOverlay);
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      const s = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+      samples.push(s); accRing.textContent = "±" + Math.round(s.acc) + "m"; useNowBtn.disabled = false;
+      if (s.acc <= 6) finishAcquire();
+    },
+    err => { showToast("GPS error: " + err.message, true); closeGpsOverlay(); },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+  hardTimeout = setTimeout(() => {
+    if (samples.length) finishAcquire();
+    else { showToast("Couldn't get a GPS lock — try again outside.", true); closeGpsOverlay(); }
+  }, 12000);
+};
+useNowBtn.onclick = () => finishAcquire();
+$('cancelGpsBtn').onclick = closeGpsOverlay;
+function closeGpsOverlay(){
+  if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  if (hardTimeout) { clearTimeout(hardTimeout); hardTimeout = null; }
+  hide(gpsOverlay);
+}
+function finishAcquire(){
+  const best = samples.reduce((a,b) => (b.acc < a.acc ? b : a), samples[0]);
+  pendingCoords = { lat: best.lat, lng: best.lng };
+  closeGpsOverlay(); openTuneOverlay(pendingCoords);
+}
+let tuneMode = 'gps'; // 'gps' | 'manual' | 'reposition'
+let repositionId = null;
+
+/* ---------------- fine-tune ---------------- */
+const tuneOverlay = $('tuneOverlay'); let tuneMap = null, tuneMarker = null;
+const pinIcon = L.divIcon({
+  className: 'drop-pin-icon',
+  html: '<div style="font-size:34px;line-height:34px;text-align:center;filter:drop-shadow(0 3px 4px rgba(0,0,0,.7));">📍</div>',
+  iconSize: [34, 34],
+  iconAnchor: [17, 32] // tip of the pin points at the exact coordinate
+});
+function openTuneOverlay(coords){
+  $('tuneHint').textContent = "Drag the pin with your finger to the exact spot, then confirm.";
+  $('backGpsBtn').classList.toggle('hidden', tuneMode !== 'gps');
+  show(tuneOverlay);
+  if (!tuneMap) {
+    tuneMap = L.map('tuneMap', { zoomControl: false }).setView([coords.lat, coords.lng], 20);
+    L.tileLayer(SAT_URL, { maxZoom: 21, maxNativeZoom: 19, attribution: SAT_ATTR }).addTo(tuneMap);
+    L.control.zoom({ position: 'bottomright' }).addTo(tuneMap);
+    tuneMarker = L.marker([coords.lat, coords.lng], { icon: pinIcon, draggable: true }).addTo(tuneMap);
+  } else {
+    tuneMap.setView([coords.lat, coords.lng], 20);
+    tuneMarker.setLatLng([coords.lat, coords.lng]);
+  }
+  setTimeout(() => tuneMap.invalidateSize(), 50);
+}
+$('confirmPosBtn').onclick = async () => {
+  const c = tuneMarker.getLatLng();
+  pendingCoords = { lat: c.lat, lng: c.lng };
+  hide(tuneOverlay);
+  if (tuneMode === 'reposition') {
+    const p = poles.find(x => x.id === repositionId);
+    repositionId = null;
+    if (p) { await persist({ ...p, lat: pendingCoords.lat, lng: pendingCoords.lng }); showToast(`${p.poleId} moved`); }
+    return;
+  }
+  openForm(null);
+};
+$('backGpsBtn').onclick = () => { hide(tuneOverlay); startGpsAcquire(); };
+$('cancelTuneBtn').onclick = () => { hide(tuneOverlay); repositionId = null; };
+
+/* ---------------- label form (new + edit) ---------------- */
+const formOverlay = $('formOverlay'), chipRow = $('chipRow'), poleIdInput = $('poleId'), notesInput = $('notes'), testedNow = $('testedNow');
+let editingId = null;
+chipRow.addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) c.classList.toggle('selected'); });
+
+let formItemType = 'pole';
+function openForm(existing){
+  editingId = existing ? existing.id : null;
+  formItemType = existing ? (existing.itemType || 'pole') : pendingItemType;
+  const info = itemTypeInfo(formItemType);
+  $('formTitle').textContent = existing ? "Edit " + existing.poleId : "Label This " + info.label;
+  const firstArea = AREAS[0] ? AREAS[0].code : null;
+  poleIdInput.value = existing ? existing.poleId : (firstArea ? nextIdForArea(firstArea) : "");
+  renderAreaChips(existing ? null : firstArea);
+  notesInput.value = existing ? (existing.notes || "") : "";
+  testedNow.checked = false;
+  $('componentsSection').classList.toggle('hidden', !info.hasComponents);
+  $('specPresetSection').classList.toggle('hidden', !info.hasSpecPresets);
+  if (info.hasSpecPresets) renderSpecPresets();
+  $('testedNowRow').classList.toggle('hidden', !!existing || !info.hasTest);
+  chipRow.querySelectorAll('.chip').forEach(c => c.classList.toggle('selected', !!existing && (existing.components||[]).includes(c.dataset.v)));
+  $('linkedPitSection').classList.toggle('hidden', !info.canLinkPit);
+  if (info.canLinkPit) renderPitOptions(existing ? existing.linkedPitId : null);
+  show(formOverlay);
+}
+function renderSpecPresets(){
+  const row = $('specPresetRow'); row.innerHTML = "";
+  SPEC_PRESETS.forEach(sp => {
+    const b = document.createElement('div');
+    b.className = 'chip';
+    b.textContent = sp.label;
+    b.onclick = () => {
+      chipRow.querySelectorAll('.chip').forEach(c => c.classList.toggle('selected', sp.components.includes(c.dataset.v)));
+    };
+    row.appendChild(b);
+  });
+}
+function renderPitOptions(selectedId){
+  const sel = $('linkedPitSelect');
+  sel.innerHTML = '<option value="">— None —</option>';
+  poles.filter(p => p.itemType === 'pit').sort((a,b) => String(a.poleId).localeCompare(String(b.poleId), undefined, { numeric:true }))
+    .forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.poleId;
+      if (p.id === selectedId) o.selected = true;
+      sel.appendChild(o);
+    });
+}
+$('cancelFormBtn').onclick = () => hide(formOverlay);
+$('saveBtn').onclick = async () => {
+  const info = itemTypeInfo(formItemType);
+  const components = info.hasComponents ? [...chipRow.querySelectorAll('.chip.selected')].map(c => c.dataset.v) : [];
+  const poleId = poleIdInput.value.trim() || nextPoleId();
+  const notes = notesInput.value.trim();
+  const linkedPitId = info.canLinkPit ? ($('linkedPitSelect').value || null) : undefined;
+  hide(formOverlay);
+  if (editingId) {
+    const p = poles.find(x => x.id === editingId); if (!p) return;
+    await persist({ ...p, poleId, components, notes, linkedPitId, updatedAt: new Date().toISOString() });
+    showToast(`${poleId} updated`);
+    return;
+  }
+  const pole = { id: 'p_' + Date.now(), poleId, itemType: formItemType, components, notes,
+    lat: pendingCoords.lat, lng: pendingCoords.lng, createdAt: new Date().toISOString(),
+    tested: false, testedAt: null, testedBy: null, inventory: info.hasInventory ? [] : undefined,
+    boundary: pendingBoundary || undefined, linkedPitId };
+  pendingBoundary = null;
+  const wantsTested = info.hasTest && testedNow.checked;
+  await persist(pole);
+  if (wantsTested) promptTesterName(async (name) => { const u = await setTested(pole.id, true, name); if (u) await sendTestEmail(u); });
+  else showToast(`${poleId} saved`);
+};
+
+/* ---------------- tested-by prompt + email ---------------- */
+const LAST_TESTER_KEY = "campusPolesLastTester";
+function promptTesterName(callback){
+  $('testerNameInput').value = localStorage.getItem(LAST_TESTER_KEY) || "";
+  pendingTesterCallback = callback;
+  show($('testerOverlay'));
+}
+let pendingTesterCallback = null;
+$('testerCancelBtn').onclick = () => { pendingTesterCallback = null; hide($('testerOverlay')); };
+$('testerGoBtn').onclick = async () => {
+  const name = $('testerNameInput').value.trim();
+  if (!name) { showToast("Enter a name first", true); return; }
+  localStorage.setItem(LAST_TESTER_KEY, name);
+  hide($('testerOverlay'));
+  if (pendingTesterCallback) { const cb = pendingTesterCallback; pendingTesterCallback = null; await cb(name); }
+};
+
+async function markTested(id){
+  promptTesterName(async (name) => {
+    const updated = await setTested(id, true, name);
+    if (updated) await sendTestEmail(updated);
+  });
+}
+async function sendTestEmail(p){
+  const when = new Date(p.testedAt).toLocaleString();
+  const comps = (p.components||[]).length ? p.components.join(", ") : "none listed";
+  const mapLink = `https://maps.google.com/?q=${p.lat},${p.lng}`;
+  const subject = `${p.poleId} TESTED — ${when}`;
+  const body = `Pole: ${p.poleId}\nStatus: TESTED\nTested by: ${p.testedBy || "—"}\nTime: ${when}\nComponents: ${comps}\nNotes: ${p.notes || "—"}\nLocation: ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}\nMap: ${mapLink}`;
+  if (EMAILJS_ON) {
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: NOTIFY_EMAIL, subject, pole_id: p.poleId, tested_by: p.testedBy || "—", tested_at: when,
+        components: comps, notes: p.notes || "—", lat: p.lat.toFixed(6), lng: p.lng.toFixed(6), map_link: mapLink });
+      showToast(`${p.poleId} tested — email sent`);
+    } catch (e) { showToast("Tested saved, but email failed: " + (e.text || e.message), true); }
+  } else {
+    showToast(`${p.poleId} marked tested — opening email`);
+    window.location.href = `mailto:${NOTIFY_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+}
+
+/* ---------------- view existing ---------------- */
+const viewOverlay = $('viewOverlay'), markTestedBtn = $('markTestedBtn'), unmarkTestedBtn = $('unmarkTestedBtn');
+let viewingId = null;
+function openView(id){
+  const p = poles.find(x => x.id === id); if (!p) return;
+  viewingId = id;
+  if (p.itemType === 'span') { openSpanView(p); return; }
+  const info = itemTypeInfo(p.itemType || 'pole');
+  const isAdmin = poleIsAdmin(), canTest = poleCanTest();
+  const realCanTest = role === 'admin' || role === 'crew';
+  $('viewTypeBadge').textContent = `${info.icon} ${info.label}`;
+  $('redrawAreaBtn').classList.toggle('hidden', !(isAdmin && info.hasArea));
+  $('repositionBtn').classList.toggle('hidden', !isAdmin);
+  if (!info.hasTest) {
+    $('viewStatus').innerHTML = '';
+  } else {
+    const state = poleState(p);
+    if (state === 'untested') $('viewStatus').innerHTML = `<span class="status-pill no">NOT TESTED</span>`;
+    else if (state === 'due') $('viewStatus').innerHTML = `<span class="status-pill due">DUE FOR RETEST</span> <span class="status-pill ok">tested ${new Date(p.testedAt).toLocaleDateString()}${p.testedBy ? ' by ' + p.testedBy : ''}</span>`;
+    else $('viewStatus').innerHTML = `<span class="status-pill ok">TESTED ${new Date(p.testedAt).toLocaleDateString()}${p.testedBy ? ' by ' + p.testedBy : ''}</span>`;
+  }
+  $('viewTitle').textContent = p.poleId;
+  $('viewComponents').classList.toggle('hidden', !info.hasComponents);
+  if (info.hasComponents) $('viewComponents').textContent = (p.components||[]).length ? p.components.join(", ") : "No components listed";
+  $('viewNotes').textContent = p.notes || "No notes";
+  const due = info.hasTest ? nextDueDate(p) : null;
+  $('viewMeta').textContent = "Added " + new Date(p.createdAt).toLocaleDateString()
+    + (due ? " · retest due " + due.toLocaleDateString() : "")
+    + " · " + p.lat.toFixed(6) + ", " + p.lng.toFixed(6);
+  if (meMarker) {
+    const me = meMarker.getLatLng();
+    $('viewDistance').textContent = `📍 ${fmtDist(distFeet(me.lat, me.lng, p.lat, p.lng))} from you`;
+  } else { $('viewDistance').textContent = ""; }
+  $('viewInventorySection').classList.toggle('hidden', !info.hasInventory);
+  if (info.hasInventory) {
+    const items = p.inventory || [];
+    $('viewInventorySummary').textContent = items.length ? items.map(i => `${i.name} ×${i.qty}`).join(', ') : 'No items logged yet.';
+    $('editInventoryBtn').classList.toggle('hidden', !isAdmin);
+  }
+  const linkedPit = info.canLinkPit && p.linkedPitId ? poles.find(x => x.id === p.linkedPitId) : null;
+  $('viewLinkedPit').classList.toggle('hidden', !linkedPit);
+  if (linkedPit) $('viewLinkedPit').textContent = `🕳️ Tied to pit: ${linkedPit.poleId}`;
+  $('gotoPitBtn').classList.toggle('hidden', !linkedPit);
+  $('gotoPitBtn').onclick = () => { if (linkedPit) openView(linkedPit.id); };
+  const tiedItems = p.itemType === 'pit' ? poles.filter(x => x.linkedPitId === p.id) : [];
+  $('viewTiedSection').classList.toggle('hidden', p.itemType !== 'pit');
+  if (p.itemType === 'pit') {
+    $('viewTiedList').innerHTML = tiedItems.length
+      ? tiedItems.map(x => `<div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;" data-id="${x.id}">${itemTypeInfo(x.itemType).icon} ${esc(String(x.poleId))}</div>`).join('')
+      : '<span style="color:var(--sub);">Nothing tied to this pit yet — set "Tied to Pit" when adding or editing a pole/transformer/pedestal.</span>';
+    $('viewTiedList').querySelectorAll('[data-id]').forEach(el => { el.onclick = () => openView(el.dataset.id); });
+  }
+  markTestedBtn.classList.toggle('hidden', !(canTest && info.hasTest) || !!p.tested);
+  unmarkTestedBtn.classList.toggle('hidden', !(canTest && info.hasTest) || !p.tested);
+  $('workOrderBtn').classList.toggle('hidden', !(realCanTest && info.hasTest));
+  opsRenderPoleSection(p);
+  show(viewOverlay);
+}
+markTestedBtn.onclick = async () => { hide(viewOverlay); await markTested(viewingId); };
+unmarkTestedBtn.onclick = async () => {
+  hide(viewOverlay); await setTested(viewingId, false, null);
+};
+$('editBtn').onclick = () => {
+  const p = poles.find(x => x.id === viewingId); hide(viewOverlay); if (!p) return;
+  if (p.itemType === 'span') { openSpanForm(p, null, null); return; }
+  openForm(p);
+};
+$('redrawAreaBtn').onclick = () => {
+  const p = poles.find(x => x.id === viewingId); if (!p) return;
+  hide(viewOverlay);
+  redrawAreaId = p.id;
+  areaPickActive = true; areaPickPts = []; areaPickLayer.clearLayers();
+  $('areaPickCountText').textContent = "0 of 4 corners dropped.";
+  show($('areaPickBanner'));
+  showToast(`Tap the 4 new corners for ${p.poleId}`);
+};
+function openSpanView(p){
+  const isAdmin = poleIsAdmin();
+  const fromP = poles.find(x => x.id === p.fromId), toP = poles.find(x => x.id === p.toId);
+  $('viewTypeBadge').textContent = `${SPAN_TYPE.icon} Conductor Span`;
+  $('viewStatus').innerHTML = '';
+  $('viewTitle').textContent = p.poleId;
+  $('viewComponents').classList.add('hidden');
+  $('viewNotes').textContent = `Size: ${p.size || 'not set'}` + (p.notes ? ' — ' + p.notes : '');
+  $('viewMeta').textContent = "Added " + new Date(p.createdAt).toLocaleDateString()
+    + (fromP && toP ? ` · connects ${fromP.poleId} and ${toP.poleId}` : '');
+  if (meMarker) {
+    const me = meMarker.getLatLng();
+    $('viewDistance').textContent = `📍 ${fmtDist(distFeet(me.lat, me.lng, p.lat, p.lng))} from you (span midpoint)`;
+  } else { $('viewDistance').textContent = ""; }
+  $('viewInventorySection').classList.add('hidden');
+  $('redrawAreaBtn').classList.add('hidden');
+  $('viewLinkedPit').classList.add('hidden');
+  $('gotoPitBtn').classList.add('hidden');
+  $('viewTiedSection').classList.add('hidden');
+  markTestedBtn.classList.add('hidden');
+  unmarkTestedBtn.classList.add('hidden');
+  $('workOrderBtn').classList.add('hidden');
+  $('repositionBtn').classList.add('hidden');
+  opsRenderPoleSection(null);
+  show(viewOverlay);
+}
+$('repositionBtn').onclick = () => {
+  const p = poles.find(x => x.id === viewingId); if (!p) return;
+  hide(viewOverlay);
+  tuneMode = 'reposition'; repositionId = p.id;
+  openTuneOverlay({ lat: p.lat, lng: p.lng });
+};
+$('gotoBtn').onclick = () => {
+  const p = poles.find(x => x.id === viewingId); if (!p) return;
+  hide(viewOverlay); followMe = false; map.setView([p.lat, p.lng], 20);
+  markerById[p.id] && markerById[p.id].openTooltip();
+};
+$('closeViewBtn').onclick = () => hide(viewOverlay);
+$('deleteBtn').onclick = async () => {
+  if (!confirm("Delete this item from the shared inventory?")) return;
+  hide(viewOverlay); await remove(viewingId); showToast("Deleted");
+};
+
+/* ---------------- building/shed inventory editor ---------------- */
+let invItems = [], invPoleId = null;
+function openInventory(p){
+  invPoleId = p.id;
+  invItems = (p.inventory || []).map(x => ({ ...x }));
+  $('invTitle').textContent = p.poleId + " — Inventory";
+  renderInvRows();
+  show($('invOverlay'));
+}
+function renderInvRows(){
+  const body = $('invRows'); body.innerHTML = "";
+  if (!invItems.length) { body.innerHTML = '<p style="text-align:center;color:var(--sub);">No items yet. Add one below.</p>'; }
+  invItems.forEach((it, idx) => {
+    const row = document.createElement('div'); row.className = 'inv-row';
+    const nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = 'Item name'; nameInp.value = it.name || '';
+    nameInp.oninput = () => { invItems[idx].name = nameInp.value; };
+    const qtyInp = document.createElement('input'); qtyInp.type = 'number'; qtyInp.min = '0'; qtyInp.value = (it.qty ?? 1);
+    qtyInp.oninput = () => { invItems[idx].qty = parseInt(qtyInp.value, 10) || 0; };
+    const delBtn = document.createElement('button'); delBtn.className = 'icon-btn'; delBtn.textContent = '🗑';
+    delBtn.onclick = () => { invItems.splice(idx, 1); renderInvRows(); };
+    row.appendChild(nameInp); row.appendChild(qtyInp); row.appendChild(delBtn);
+    body.appendChild(row);
+  });
+}
+$('editInventoryBtn').onclick = () => {
+  const p = poles.find(x => x.id === viewingId); if (!p) return;
+  hide(viewOverlay); openInventory(p);
+};
+$('invAddRowBtn').onclick = () => { invItems.push({ id: 'i_' + Date.now() + '_' + Math.floor(Math.random()*1000), name: '', qty: 1 }); renderInvRows(); };
+$('invCancelBtn').onclick = () => hide($('invOverlay'));
+$('invSaveBtn').onclick = async () => {
+  const p = poles.find(x => x.id === invPoleId); if (!p) return;
+  const cleaned = invItems.filter(it => (it.name||'').trim()).map(it => ({ id: it.id, name: it.name.trim(), qty: it.qty || 0 }));
+  await persist({ ...p, inventory: cleaned, updatedAt: new Date().toISOString() });
+  hide($('invOverlay'));
+  showToast("Inventory saved");
+};
+
+/* ---------------- work order (matches the NLC field work order template) ---------------- */
+const WO_TRAINEE_KEY = "campusPolesLastTrainee", WO_INSTRUCTOR_KEY = "campusPolesLastInstructor";
+let woPoleId = null;
+$('workOrderBtn').onclick = () => {
+  const p = poles.find(x => x.id === viewingId); if (!p) return;
+  woPoleId = p.id;
+  $('woForPole').textContent = `For ${p.poleId}`;
+  $('woTrainee').value = localStorage.getItem(WO_TRAINEE_KEY) || "";
+  $('woInstructor').value = localStorage.getItem(WO_INSTRUCTOR_KEY) || "";
+  $('woTrouble').value = "";
+  const priRow = $('woPriorityRow');
+  priRow.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('selected', i === 1)); // default Urgent
+  hide(viewOverlay);
+  show($('woOverlay'));
+};
+$('woPriorityRow').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (!c) return;
+  $('woPriorityRow').querySelectorAll('.chip').forEach(x => x.classList.remove('selected'));
+  c.classList.add('selected');
+});
+$('woCancelBtn').onclick = () => hide($('woOverlay'));
+$('woGenerateBtn').onclick = () => {
+  const p = poles.find(x => x.id === woPoleId); if (!p) return;
+  const trainee = $('woTrainee').value.trim();
+  const instructor = $('woInstructor').value.trim();
+  const priChip = $('woPriorityRow').querySelector('.chip.selected');
+  const priority = priChip ? priChip.textContent : 'Routine';
+  const trouble = $('woTrouble').value.trim();
+  if (trainee) localStorage.setItem(WO_TRAINEE_KEY, trainee);
+  if (instructor) localStorage.setItem(WO_INSTRUCTOR_KEY, instructor);
+  hide($('woOverlay'));
+  printWorkOrder(p, { trainee, instructor, priority, trouble });
+};
+function printWorkOrder(p, f){
+  const info = itemTypeInfo(p.itemType || 'pole');
+  const now = new Date();
+  const woNum = `WO-${p.poleId}-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  const dateIssued = now.toLocaleDateString();
+  const comps = (p.components||[]).length ? p.components.join(', ') : '';
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(poleLink(p))}`;
+  const checklist = [
+    'PPE inspected (gloves, sleeves, hard hat, FR clothing)',
+    'Job briefing / tailboard completed with crew',
+    'Circuit verified de-energized and grounds applied',
+    'Traffic control / work zone set up',
+    'Rubber goods tested (air/visual) before use',
+    'Tools and rigging inspected'
+  ];
+  const blank = '&nbsp;';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Work Order ${esc(woNum)}</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;margin:26px;color:#1a1a1a;}
+    h1{font-size:20px;margin:0;color:#1f3864;letter-spacing:.5px;}
+    .sub{font-size:11px;color:#1f3864;font-weight:700;letter-spacing:.5px;margin:2px 0 10px;}
+    hr{border:none;border-top:2px solid #1f3864;margin:6px 0 14px;}
+    .row{display:flex;gap:16px;margin-bottom:10px;}
+    .col{flex:1;}
+    .lbl{font-size:10px;font-weight:700;color:#333;margin-bottom:3px;text-transform:uppercase;}
+    .box{background:#fce4d6;border:1px solid #c9c9c9;padding:6px 8px;min-height:16px;font-size:13px;}
+    .box.tall{min-height:50px;}
+    h2{font-size:12px;color:#1f3864;text-transform:uppercase;margin:16px 0 6px;letter-spacing:.4px;}
+    h2.danger{color:#c00000;}
+    .checklist{display:flex;flex-wrap:wrap;gap:6px 28px;font-size:12px;}
+    .checkitem{display:flex;align-items:center;gap:6px;width:44%;}
+    .checkitem .cb{width:13px;height:13px;border:1px solid #333;display:inline-block;flex:none;}
+    .sig{display:flex;gap:24px;margin-top:26px;}
+    .sig .col{border-top:1px solid #333;padding-top:4px;font-size:10px;color:#555;}
+    .footer{margin-top:24px;display:flex;justify-content:space-between;align-items:flex-end;font-size:10px;color:#777;}
+    .qr{text-align:center;}
+    .qr img{display:block;margin-bottom:2px;}
+    @media print{ body{margin:10mm;} }
+  </style></head><body>
+    <h1>NORTHWEST LINEMAN COLLEGE</h1>
+    <div class="sub">TRAINING TROUBLE ORDER — FIELD WORK ORDER</div>
+    <hr>
+    <div class="row">
+      <div class="col"><div class="lbl">Work Order #</div><div class="box">${esc(woNum)}</div></div>
+      <div class="col"><div class="lbl">Date Issued</div><div class="box">${esc(dateIssued)}</div></div>
+    </div>
+    <div class="row">
+      <div class="col"><div class="lbl">Trainee</div><div class="box">${esc(f.trainee||'') || blank}</div></div>
+      <div class="col"><div class="lbl">Instructor</div><div class="box">${esc(f.instructor||'') || blank}</div></div>
+    </div>
+    <h2>Circuit Information</h2>
+    <div class="row">
+      <div class="col"><div class="lbl">Circuit #</div><div class="box">${blank}</div></div>
+      <div class="col"><div class="lbl">Feeder</div><div class="box">${blank}</div></div>
+      <div class="col"><div class="lbl">Substation</div><div class="box">${blank}</div></div>
+    </div>
+    <div class="row">
+      <div class="col"><div class="lbl">Protective Device</div><div class="box">${blank}</div></div>
+      <div class="col"><div class="lbl">Structure Type</div><div class="box">${esc(info.label)} — ${esc(p.poleId)}</div></div>
+      <div class="col"><div class="lbl">Priority</div><div class="box">${esc(f.priority||'Routine')}</div></div>
+    </div>
+    <h2>Reported Trouble</h2>
+    <div class="box tall">${esc(f.trouble||'') || blank}</div>
+    <h2 class="danger">Safety / Hazard Notes</h2>
+    <div class="box tall">${esc(p.notes||'') || blank}</div>
+    <h2>Crew &amp; PPE Checklist</h2>
+    <div class="checklist">
+      ${checklist.map(c => `<div class="checkitem"><span class="cb"></span>${esc(c)}</div>`).join('')}
+    </div>
+    <h2>Additional Notes</h2>
+    <div class="box tall">${blank}</div>
+    <h2>Materials Used / Field Notes</h2>
+    <div class="box tall">${comps ? 'On file at this structure: ' + esc(comps) : blank}</div>
+    <div class="sig">
+      <div class="col">Trainee Signature / Date</div>
+      <div class="col">Instructor Signature / Date</div>
+    </div>
+    <div class="footer">
+      <div>Generated ${esc(now.toLocaleString())} · ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}</div>
+      <div class="qr"><img src="${qrUrl}" width="90" height="90" alt="QR code"><div>Scan for pole record</div></div>
+    </div>
+    <script>window.onload = () => setTimeout(() => window.print(), 250);<\/script>
+  </body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) { showToast("Pop-up blocked — allow pop-ups for this site to print.", true); return; }
+  win.document.write(html); win.document.close();
+}
+
+/* =========================================================
+   CAMPUS OPS — work orders from radio calls
+   Operator (admin code): hears a call on the real radio, taps 🎙 Radio Call,
+   the app listens to what the operator repeats (or they type it), fills the
+   form, operator checks it and saves. Staff (crew code) see orders read-only.
+   ========================================================= */
+var OPS_READY = false;
+var WO_API = "/api/workorders";
+var WO_CACHE_KEY = "campusOpsOrders", OPS_BY_KEY = "campusOpsOperator", OPS_PEOPLE_KEY = "campusOpsPeople";
+var WO_POLL_MS = 15000, POLE_POLL_MS = 120000;
+var WO_CLOSED = ['Complete', 'Canceled'];
+var WO_PRI_RANK = { Emergency: 0, Urgent: 1, Routine: 2 };
+var WO_PRI_COLOR = { Emergency: '#ff5b5b', Urgent: '#ffb020', Routine: '#3ba7ff' };
+var orders = [];
+var opsFilter = 'open';
+var opsDetailNum = null;
+var opsFormPoleId = null;
+var opsFormSource = 'typed';
+var woLayer = null;
+var recog = null, recogLive = false;
+
+function woIsOpen(o){ return !WO_CLOSED.includes(o.status); }
+function normId(s){ return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function poleForOrder(o){
+  return poles.find(p => p.id === o.poleItemId) || (o.poleLabel ? poles.find(p => normId(p.poleId) === normId(o.poleLabel)) : null) || null;
+}
+function opsWhen(iso){
+  const d = new Date(iso), today = new Date();
+  return d.toDateString() === today.toDateString()
+    ? d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })
+    : d.toLocaleDateString([], { month:'short', day:'numeric' }) + ' ' + d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+}
+
+/* ---------- data ---------- */
+function opsCache(){ try { localStorage.setItem(WO_CACHE_KEY, JSON.stringify(orders)); } catch(e){} }
+async function opsFetch(){
+  if (role === 'viewer') { orders = []; opsRender(); return; }
+  try {
+    const r = await fetch(WO_API, { headers: hdr(), cache: 'no-store' });
+    if (r.status === 403) { orders = []; opsCache(); opsRender(); return; }
+    if (!r.ok) throw new Error(await r.text());
+    orders = await r.json();
+    opsCache(); opsRender();
+  } catch (e) { opsRender(); } // offline: keep showing the cached list
+}
+async function opsCreate(body){
+  const r = await fetch(WO_API, { method:'POST', headers:{ 'Content-Type':'application/json', ...hdr() }, body: JSON.stringify(body) });
+  if (r.status === 403) throw new Error("Operator code required");
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Save failed');
+  return r.json();
+}
+async function opsPatch(num, body){
+  const r = await fetch(`${WO_API}/${num}`, { method:'PATCH', headers:{ 'Content-Type':'application/json', ...hdr() }, body: JSON.stringify(body) });
+  if (r.status === 403) throw new Error("Operator code required");
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Save failed');
+  return r.json();
+}
+function opsUpsert(o){
+  const i = orders.findIndex(x => x.num === o.num);
+  if (i >= 0) orders[i] = o; else orders.unshift(o);
+  opsCache(); opsRender();
+}
+
+/* ---------- people (assignee / caller suggestions) ---------- */
+function opsPeople(){
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(OPS_PEOPLE_KEY)) || []; } catch(e){}
+  const all = new Set(saved);
+  orders.forEach(o => { if (o.assignee) all.add(o.assignee); if (o.caller) all.add(o.caller); });
+  return [...all].filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
+function opsRememberPeople(...names){
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(OPS_PEOPLE_KEY)) || []; } catch(e){}
+  names.filter(Boolean).forEach(n => { if (!saved.some(s => s.toLowerCase() === n.toLowerCase())) saved.push(n); });
+  try { localStorage.setItem(OPS_PEOPLE_KEY, JSON.stringify(saved.slice(-100))); } catch(e){}
+}
+function opsFillDatalists(){
+  $('opsPeopleList').innerHTML = opsPeople().map(n => `<option value="${esc(n)}">`).join('');
+  $('opsPoleList').innerHTML = poles.filter(p => p.itemType !== 'span')
+    .map(p => `<option value="${esc(String(p.poleId))}">${esc(itemTypeInfo(p.itemType || 'pole').label)}</option>`).join('');
+}
+
+/* ---------- rendering ---------- */
+function opsSorted(list){
+  return [...list].sort((a, b) => {
+    const oa = woIsOpen(a) ? 0 : 1, ob = woIsOpen(b) ? 0 : 1;
+    if (oa !== ob) return oa - ob;
+    if (oa === 0 && WO_PRI_RANK[a.priority] !== WO_PRI_RANK[b.priority]) return WO_PRI_RANK[a.priority] - WO_PRI_RANK[b.priority];
+    return b.num - a.num;
+  });
+}
+function opsRowHtml(o){
+  const where = o.poleLabel ? esc(o.poleLabel) : 'No pole';
+  return `<div class="wo-row" data-num="${o.num}">
+    <div class="bar pri-${esc(o.priority)}"></div>
+    <div style="flex:1;min-width:0;">
+      <div class="top">${esc(o.id)} · ${where}<span class="wo-tag">${esc(o.status)}</span>${o.priority !== 'Routine' ? `<span class="wo-tag" style="color:${WO_PRI_COLOR[o.priority]};border-color:${WO_PRI_COLOR[o.priority]}">${esc(o.priority)}</span>` : ''}</div>
+      <div class="iss">${esc(o.issue)}</div>
+      <div class="meta">${o.assignee ? '👷 ' + esc(o.assignee) + ' · ' : 'Unassigned · '}${opsWhen(o.createdAt)}${o.caller ? ' · from ' + esc(o.caller) : ''}</div>
+    </div>
+  </div>`;
+}
+function opsBindRows(container){
+  container.querySelectorAll('.wo-row').forEach(el => { el.onclick = () => opsOpenDetail(Number(el.dataset.num)); });
+}
+function opsRender(){
+  if (!OPS_READY) return;
+  const open = orders.filter(woIsOpen);
+  const hot = open.some(o => o.priority === 'Emergency');
+  $('opsCount').textContent = open.length;
+  $('opsBtn').classList.toggle('hot', hot);
+  $('mOpsSub').textContent = role === 'viewer' ? 'Enter a code to see work orders'
+    : `${open.length} open` + (hot ? ' · EMERGENCY open' : '') + ` · ${orders.length} total`;
+
+  // rings on the map around poles with open orders (highest priority wins)
+  woLayer.clearLayers();
+  const best = {};
+  open.forEach(o => {
+    const p = poleForOrder(o); if (!p) return;
+    if (!best[p.id] || WO_PRI_RANK[o.priority] < WO_PRI_RANK[best[p.id].o.priority]) best[p.id] = { p, o, n: (best[p.id] ? best[p.id].n : 0) + 1 };
+    else best[p.id].n++;
+  });
+  Object.values(best).forEach(({ p, o, n }) => {
+    L.circleMarker([p.lat, p.lng], { radius: 17, color: WO_PRI_COLOR[o.priority], weight: 4, fill: false, dashArray: o.priority === 'Routine' ? '4,5' : null, interactive: false })
+      .bindTooltip(`🧾 ${n}`, { permanent: true, direction: 'bottom', offset: [0, 14], className: 'pole-label' })
+      .addTo(woLayer);
+  });
+
+  if (!$('opsListOverlay').classList.contains('hidden')) opsRenderList();
+  if (!$('opsDetailOverlay').classList.contains('hidden') && opsDetailNum != null) opsFillDetail(false);
+  if (!$('viewOverlay').classList.contains('hidden') && typeof viewingId !== 'undefined' && viewingId) {
+    const p = poles.find(x => x.id === viewingId);
+    opsRenderPoleSection(p && p.itemType !== 'span' ? p : null);
+  }
+}
+function opsRenderList(){
+  const q = $('opsSearch').value.trim().toLowerCase();
+  let list = orders.filter(o => opsFilter === 'all' || (opsFilter === 'open' ? woIsOpen(o) : !woIsOpen(o)));
+  if (q) list = list.filter(o => [o.id, o.poleLabel, o.issue, o.assignee, o.caller, o.status, o.priority].join(' ').toLowerCase().includes(q));
+  $('opsList').innerHTML = list.length ? opsSorted(list).map(opsRowHtml).join('')
+    : `<p style="text-align:center;padding:16px 0;">${orders.length ? 'Nothing matches.' : 'No work orders yet.'}</p>`;
+  opsBindRows($('opsList'));
+}
+function opsRenderPoleSection(p){
+  if (!OPS_READY) return;
+  const staff = role !== 'viewer';
+  $('viewNewOpsBtn').classList.toggle('hidden', !(role === 'admin' && p));
+  if (!staff || !p) { hide($('viewOpsSection')); return; }
+  const mine = opsSorted(orders.filter(o => woIsOpen(o) && poleForOrder(o) && poleForOrder(o).id === p.id));
+  $('viewOpsSection').classList.toggle('hidden', !mine.length);
+  $('viewOpsList').innerHTML = mine.map(opsRowHtml).join('');
+  opsBindRows($('viewOpsList'));
+}
+
+/* ---------- list ---------- */
+function opsOpenList(){
+  hide($('menuOverlay'));
+  $('opsSearch').value = '';
+  opsRenderList(); show($('opsListOverlay'));
+  opsFetch();
+}
+
+/* ---------- detail / edit ---------- */
+function opsOpenDetail(num){
+  opsDetailNum = num;
+  hide(viewOverlay);
+  opsFillDetail(true);
+  show($('opsDetailOverlay'));
+}
+function opsFillDetail(resetInputs){
+  const o = orders.find(x => x.num === opsDetailNum); if (!o) return;
+  $('opsDetailBadge').innerHTML = `<span style="color:${WO_PRI_COLOR[o.priority]}">${esc(o.priority)}</span> · ${esc(o.status)} · ${o.source === 'radio' ? '🎙 radio call' : '⌨ typed'}`;
+  $('opsDetailTitle').textContent = `${o.id} — ${o.poleLabel || 'No pole'}`;
+  $('opsDetailIssue').textContent = o.issue;
+  $('opsDetailMeta').textContent = `Opened ${new Date(o.createdAt).toLocaleString()} by ${o.createdBy}`
+    + (o.caller ? ` · called in by ${o.caller}` : '')
+    + (o.assignee ? ` · assigned to ${o.assignee}` : ' · unassigned')
+    + (o.completedAt ? ` · completed ${new Date(o.completedAt).toLocaleString()}` : '');
+  if (resetInputs) {
+    $('opsStatus').value = o.status;
+    $('opsPriority').value = o.priority;
+    $('opsEditAssignee').value = o.assignee || '';
+    $('opsNote').value = '';
+  }
+  $('opsGotoPoleBtn').classList.toggle('hidden', !poleForOrder(o));
+  $('opsHistory').innerHTML = [...(o.history || [])].reverse()
+    .map(h => `<div><b>${esc(opsWhen(h.at))}</b> · ${esc(h.by)}<br>${esc(h.text)}</div>`).join('');
+}
+async function opsSaveDetail(){
+  const o = orders.find(x => x.num === opsDetailNum); if (!o) return;
+  const by = ($('opsBy').value.trim() || localStorage.getItem(OPS_BY_KEY) || 'Operator');
+  const changes = { status: $('opsStatus').value, priority: $('opsPriority').value, assignee: $('opsEditAssignee').value.trim() };
+  const note = $('opsNote').value.trim();
+  if (changes.status === 'Canceled' && o.status !== 'Canceled' && !confirm(`Cancel ${o.id}? It stays in the history as Canceled.`)) return;
+  const btn = $('opsUpdateBtn'); btn.disabled = true;
+  try {
+    const u = await opsPatch(o.num, { changes, note, by });
+    opsRememberPeople(changes.assignee);
+    opsUpsert(u); opsFillDetail(true);
+    showToast(`${u.id} updated`);
+  } catch (e) { showToast(`Not saved — ${e.message}`, true); }
+  btn.disabled = false;
+}
+function opsPrint(){
+  const o = orders.find(x => x.num === opsDetailNum); if (!o) return;
+  const p = poleForOrder(o);
+  const rows = [['Work Order', o.id], ['Pole / Item', o.poleLabel || '—'], ['Priority', o.priority], ['Status', o.status],
+    ['Assigned To', o.assignee || '—'], ['Called In By', o.caller || '—'], ['Opened', new Date(o.createdAt).toLocaleString() + ' by ' + o.createdBy],
+    ['Location', p ? `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}` : '—']];
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(o.id)}</title>
+  <style>body{font-family:Arial,sans-serif;margin:28px;color:#111}h1{margin:0 0 4px;font-size:22px}
+  .sub{color:#555;font-size:12px;margin-bottom:16px}table{width:100%;border-collapse:collapse;margin-bottom:16px}
+  td{border:1px solid #999;padding:8px;font-size:14px;vertical-align:top}td:first-child{width:28%;font-weight:bold;background:#f2f2f2}
+  .box{border:1px solid #999;padding:10px;min-height:60px;font-size:14px;white-space:pre-wrap;margin-bottom:16px}
+  h3{font-size:14px;margin:12px 0 6px}.hist div{font-size:12px;margin-bottom:4px}</style></head><body>
+  <h1>NLC Campus Ops — Work Order</h1><div class="sub">Printed ${new Date().toLocaleString()}</div>
+  <table>${rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(String(r[1]))}</td></tr>`).join('')}</table>
+  <h3>Issue</h3><div class="box">${esc(o.issue)}</div>
+  <h3>Work Performed / Notes</h3><div class="box" style="min-height:120px"></div>
+  <h3>Completed By / Date</h3><div class="box" style="min-height:30px"></div>
+  <h3>History</h3><div class="hist">${(o.history || []).map(h => `<div>${esc(new Date(h.at).toLocaleString())} — ${esc(h.by)}: ${esc(h.text)}</div>`).join('')}</div>
+  <script>window.onload = () => setTimeout(() => window.print(), 250);<\/script></body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) { showToast("Pop-up blocked — allow pop-ups for this site to print.", true); return; }
+  win.document.write(html); win.document.close();
+}
+
+/* ---------- new order form ---------- */
+function opsSetPriority(v){
+  $('opsPriRow').querySelectorAll('.chip').forEach(c => c.classList.toggle('selected', c.dataset.v === v));
+}
+function opsOpenForm(pole, fromRadio){
+  hide(viewOverlay); hide($('opsListOverlay')); hide($('menuOverlay'));
+  opsFillDatalists();
+  opsFormPoleId = pole ? pole.id : null;
+  opsFormSource = fromRadio ? 'radio' : 'typed';
+  $('opsFormTitle').textContent = fromRadio ? 'Radio Call → Work Order' : (pole ? `New Work Order — ${pole.poleId}` : 'New Work Order');
+  $('opsHeard').value = '';
+  $('opsParseNote').textContent = '';
+  $('opsPole').value = pole ? String(pole.poleId) : '';
+  $('opsIssue').value = '';
+  $('opsAssignee').value = '';
+  $('opsCaller').value = '';
+  $('opsBy').value = localStorage.getItem(OPS_BY_KEY) || '';
+  opsSetPriority('Routine');
+  show($('opsFormOverlay'));
+  if (fromRadio) opsStartListening();
+}
+async function opsSaveForm(){
+  const issue = $('opsIssue').value.trim();
+  if (!issue) { showToast("Issue is required", true); $('opsIssue').focus(); return; }
+  const poleText = $('opsPole').value.trim();
+  const match = poleText ? poles.find(p => normId(p.poleId) === normId(poleText)) : (opsFormPoleId ? poles.find(p => p.id === opsFormPoleId) : null);
+  if (poleText && !match && !confirm(`"${poleText}" isn't a pole on the map. Save it as a text location anyway?`)) return;
+  const by = $('opsBy').value.trim();
+  if (by) localStorage.setItem(OPS_BY_KEY, by);
+  const sel = $('opsPriRow').querySelector('.chip.selected');
+  const body = {
+    poleItemId: match ? match.id : null,
+    poleLabel: match ? String(match.poleId) : poleText,
+    issue,
+    priority: sel ? sel.dataset.v : 'Routine',
+    assignee: $('opsAssignee').value.trim(),
+    caller: $('opsCaller').value.trim(),
+    source: opsFormSource,
+    by: by || 'Operator',
+  };
+  const btn = $('opsSaveBtn'); btn.disabled = true;
+  try {
+    opsStopListening();
+    const o = await opsCreate(body);
+    opsRememberPeople(body.assignee, body.caller);
+    opsUpsert(o);
+    hide($('opsFormOverlay'));
+    showToast(`${o.id} created${o.poleLabel ? ' — ' + o.poleLabel : ''}`);
+  } catch (e) { showToast(`Not saved — ${e.message}. Form kept open.`, true); }
+  btn.disabled = false;
+}
+
+/* ---------- call parser: text → pole / priority / assignee / caller / issue ---------- */
+var NUM_WORDS = { zero:0, oh:0, one:1, two:2, to:2, too:2, three:3, four:4, for:4, five:5, six:6, seven:7, eight:8, ate:8, nine:9, ten:10,
+  eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19 };
+var TENS = { twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90 };
+var NAME_STOP = new Set(['a','an','the','it','crew','someone','somebody','them','him','her','out','over','up','me','us','to','and','please','that','this','there','is','on','for','asap','now','pole','my','our','his','help','someone','out','here']);
+function wordsToDigits(t){
+  // "twenty one" -> "21", "fourteen" -> "14"; only touches number words next to a pole/area reference context loosely
+  return t.replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/g,
+      (m, a, b) => String(TENS[a] + NUM_WORDS[b]))
+    .replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b/g, m => String(TENS[m]))
+    .replace(/\b(pole|number|area|ca|da|ta|ug|ra|bld)\s+(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b/g,
+      (m, a, b) => a + ' ' + NUM_WORDS[b]);
+}
+function opsParseCall(raw){
+  const out = { pole: null, poleLabel: '', priority: 'Routine', assignee: '', caller: '', issue: '', notes: [] };
+  if (!raw.trim()) return out;
+  let t = ' ' + raw.toLowerCase().replace(/[.,;!?]/g, ' ').replace(/\s+/g, ' ') + ' ';
+  // area names -> codes ("climbing area 14" -> "ca 14")
+  AREAS.forEach(a => {
+    const label = a.label.toLowerCase().replace(/&/g, 'and');
+    const first = label.split(' ')[0];
+    t = t.replace(new RegExp('\\b' + label.replace(/[^a-z ]/g, '').replace(/\s+/g, '\\s+') + '\\b', 'g'), ' ' + a.code.toLowerCase() + ' ');
+    if (first.length > 4) t = t.replace(new RegExp('\\b' + first + '\\b', 'g'), ' ' + a.code.toLowerCase() + ' ');
+  });
+  // spelled-out letters "c a 14" -> "ca 14"
+  for (let i = 0; i < 2; i++) t = t.replace(/\b([a-z]) ([a-z])\b(?= ?\d| [a-z]\b)/g, '$1$2');
+  t = wordsToDigits(t);
+  const codes = AREAS.map(a => a.code.toLowerCase()).sort((a, b) => b.length - a.length);
+
+  // pole by area code + number
+  const re = new RegExp('\\b(' + codes.join('|') + ')\\s*-?\\s*(?:pole\\s*)?(?:number\\s*)?(\\d{1,4})\\b');
+  const m = t.match(re);
+  if (m) {
+    const label = (m[1] + m[2]).toUpperCase();
+    const p = poles.find(x => normId(x.poleId) === label);
+    if (p) { out.pole = p; out.poleLabel = String(p.poleId); }
+    else { out.poleLabel = label; out.notes.push(`Heard ${label} — not on the map. Check the pole number.`); }
+  } else {
+    const m2 = t.match(/\bpole\s*(?:number\s*)?(\d{1,4})\b/);
+    if (m2) {
+      const hits = poles.filter(x => x.itemType !== 'span' && String(x.poleId).replace(/\D/g, '') === String(Number(m2[1])));
+      if (hits.length === 1) { out.pole = hits[0]; out.poleLabel = String(hits[0].poleId); }
+      else if (hits.length > 1) out.notes.push(`Pole ${m2[1]} exists in ${hits.map(h => h.poleId).join(', ')} — pick the right one.`);
+      else out.notes.push(`Heard pole ${m2[1]} — no area given and no match. Pick the pole.`);
+    } else out.notes.push('No pole heard — pick one or leave blank.');
+  }
+
+  // priority
+  if (/\b(emergency|911|injur\w*|hurt|fire|smoke|wire down|line down|down wire|downed|shock\w*|unconscious|arc\w*|bleeding)\b/.test(t)) {
+    out.priority = 'Emergency'; out.notes.push('⚠ Emergency words heard — confirm priority.');
+  } else if (/\b(urgent|asap|right away|right now|immediately|priority|hazard\w*|unsafe|leaning)\b/.test(t)) out.priority = 'Urgent';
+
+  // people: prefer names already known
+  const people = opsPeople();
+  const known = name => people.find(n => n.toLowerCase() === name.toLowerCase() || n.toLowerCase().split(' ')[0] === name.toLowerCase());
+  const cap = w => w.replace(/\b\w/g, c => c.toUpperCase());
+  const asg = t.match(/\b(?:assign(?:ed)?|send|dispatch|give (?:it|that) to)\s+(?:it\s+|that\s+)?(?:to\s+)?([a-z]+)(?:\s+([a-z]+))?/);
+  if (asg && !NAME_STOP.has(asg[1])) {
+    const two = asg[2] && !NAME_STOP.has(asg[2]) ? asg[1] + ' ' + asg[2] : null;
+    out.assignee = (two && known(two)) || known(asg[1]) || cap(asg[1]);
+  }
+  const clr = t.match(/\bthis is\s+([a-z]+)/);
+  if (clr && !NAME_STOP.has(clr[1]) && !codes.includes(clr[1])) out.caller = known(clr[1]) || cap(clr[1]);
+
+  // issue = what was said, minus the radio preamble and the assignment clause
+  let issue = raw.trim()
+    .replace(/^\s*(?:operator|base|dispatch|campus ops)[,\s]+/i, '')
+    .replace(/^\s*this is\s+\w+[,.\s]+/i, '')
+    .replace(/[,.\s]*(?:assign(?:ed)?|send|dispatch)\s+(?:it\s+|that\s+)?(?:to\s+)?\w+(?:\s+\w+)?[.\s]*$/i, '')
+    .replace(/[,.\s]*\b(?:over|copy|out)\s*$/i, '')
+    .replace(/[,.\s]*\b(?:it'?s\s+)?(?:urgent|asap|emergency|routine|right away|priority)\s*$/i, '')
+    .trim();
+  out.issue = issue ? issue[0].toUpperCase() + issue.slice(1) : raw.trim();
+  return out;
+}
+function opsApplyParse(){
+  const r = opsParseCall($('opsHeard').value);
+  if (r.pole || r.poleLabel) $('opsPole').value = r.poleLabel;
+  if (r.issue) $('opsIssue').value = r.issue;
+  opsSetPriority(r.priority);
+  if (r.assignee) $('opsAssignee').value = r.assignee;
+  if (r.caller) $('opsCaller').value = r.caller;
+  $('opsParseNote').textContent = r.notes.join(' ');
+  if (r.pole) { map.setView([r.pole.lat, r.pole.lng], Math.max(map.getZoom(), 19)); }
+}
+
+/* ---------- voice (browser speech-to-text) ---------- */
+function opsSetMic(state, text){
+  const b = $('micBtn');
+  b.classList.toggle('live', state === 'live');
+  b.textContent = text;
+  b.disabled = state === 'off';
+}
+function opsStartListening(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { opsSetMic('off', 'Voice not supported here — type it'); return; }
+  if (recogLive) return;
+  recog = new SR();
+  recog.lang = 'en-US'; recog.continuous = true; recog.interimResults = true;
+  const base = $('opsHeard').value ? $('opsHeard').value.trim() + ' ' : '';
+  let finalText = '';
+  recog.onresult = ev => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const txt = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) finalText += txt + ' '; else interim += txt;
+    }
+    $('opsHeard').value = (base + finalText + interim).trim();
+  };
+  recog.onerror = ev => {
+    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') showToast("Microphone blocked — allow mic access for this site", true);
+    else if (ev.error !== 'no-speech' && ev.error !== 'aborted') showToast("Voice error: " + ev.error, true);
+  };
+  recog.onend = () => {
+    recogLive = false; opsSetMic('idle', '🎙 Tap to Listen');
+    if ($('opsHeard').value.trim()) opsApplyParse();
+  };
+  try { recog.start(); recogLive = true; opsSetMic('live', '■ Listening — tap to stop'); }
+  catch (e) { recogLive = false; opsSetMic('idle', '🎙 Tap to Listen'); }
+}
+function opsStopListening(){ if (recog && recogLive) { try { recog.stop(); } catch(e){} } }
+
+/* ---------- role hook + startup ---------- */
+function opsOnRole(){
+  if (!OPS_READY) return;
+  if (role === 'viewer') { orders = []; opsCache(); }
+  opsRender();
+  if (role !== 'viewer') opsFetch();
+}
+function opsInit(){
+  try { orders = JSON.parse(localStorage.getItem(WO_CACHE_KEY)) || []; } catch(e){ orders = []; }
+  woLayer = L.layerGroup().addTo(map);
+  $('opsBtn').onclick = opsOpenList;
+  $('mOps').onclick = opsOpenList;
+  $('opsListClose').onclick = () => hide($('opsListOverlay'));
+  $('opsNewBtn').onclick = () => opsOpenForm(null, false);
+  $('opsSearch').oninput = opsRenderList;
+  $('opsFilterRow').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    opsFilter = b.dataset.f;
+    $('opsFilterRow').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    opsRenderList();
+  });
+  $('radioBtn').onclick = () => opsOpenForm(null, true);
+  $('viewNewOpsBtn').onclick = () => { const p = poles.find(x => x.id === viewingId); if (p) opsOpenForm(p, false); };
+  $('micBtn').onclick = () => recogLive ? opsStopListening() : opsStartListening();
+  $('opsParseBtn').onclick = opsApplyParse;
+  $('opsPriRow').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) opsSetPriority(c.dataset.v); });
+  $('opsSaveBtn').onclick = opsSaveForm;
+  $('opsFormCancel').onclick = () => { opsStopListening(); hide($('opsFormOverlay')); };
+  $('opsUpdateBtn').onclick = opsSaveDetail;
+  $('opsPrintBtn').onclick = opsPrint;
+  $('opsDetailClose').onclick = () => { hide($('opsDetailOverlay')); opsDetailNum = null; };
+  $('opsGotoPoleBtn').onclick = () => {
+    const o = orders.find(x => x.num === opsDetailNum); const p = o && poleForOrder(o); if (!p) return;
+    hide($('opsDetailOverlay')); hide($('opsListOverlay'));
+    map.setView([p.lat, p.lng], 20); openView(p.id);
+  };
+  ['opsListOverlay', 'opsDetailOverlay'].forEach(id => $(id).addEventListener('click', e => { if (e.target === $(id)) hide($(id)); }));
+  setInterval(() => { if (document.visibilityState === 'visible' && role !== 'viewer') opsFetch(); }, WO_POLL_MS);
+  setInterval(() => { if (document.visibilityState === 'visible') refresh(true).then(opsRender); }, POLE_POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && role !== 'viewer') opsFetch(); });
+  OPS_READY = true;
+  opsOnRole();
+}
+
+/* ---------------- toast ---------------- */
+function showToast(msg, isError){
+  const t = document.createElement('div');
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+opsInit();
+</script>
+</body>
+</html>
