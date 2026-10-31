@@ -1,56 +1,64 @@
 # NLC Campus Ops
 
-Live work orders for the Texas campus, built on a copy of the NLC Pole Yard app.
+Live system operations for the NLC Texas campus. Same look and screens as GRID OPS (GIS map, one-line, switching & clearances, work orders, radio log, unit board, alarms, status wall, multi-monitor), built on the real Pole Yard inventory.
 
-- **Poles are read-only here.** They load live from the original Pole Yard site (`poleyard.netlify.app`). Add, edit and test poles in the Pole Yard app; changes show up here within 2 minutes. If the Pole Yard site is down, the last good copy is used.
-- **Work orders live here only.** Nothing is ever written to the Pole Yard site.
+- **Nothing on the yard is energized.** "In service / out of service" is the training model: open a device and everything past it shows out of service, exactly like GRID OPS.
+- **Real people, real radios.** Nothing is simulated. The operator records what instructors report.
+- **GRID OPS is separate** (`climber1125/grid-ops`) and unchanged. **Pole Yard is separate** (`poleyard.netlify.app`) and unchanged. This app only reads it.
 
-## Access codes
+## Access
 
-| Role | How | Can do |
+| Code (Netlify env var) | Screen | Can do |
 |---|---|---|
-| Viewer | just the link | See the map and pole details. No work orders. |
-| Staff | ☰ → Access → `CREW_KEY` | See work orders (list, map rings, on each pole). |
-| Operator | ☰ → Access → `ADMIN_KEY` | Create and update work orders, 🎙 Radio Call. |
+| `ADMIN_KEY` | **Operator** | Everything: network, work orders, device records, clearances, switching, roster |
+| `CREW_KEY` | **Staff** | Same screens, view only, updates every 4 s |
+| none | Sign-in screen only | — |
 
-Codes are checked on the server. **If neither code is set, everyone is operator** — set both before sharing the link.
+If **neither** variable is set, everyone is operator. Set both (mark them secret, scope must include Functions), then redeploy.
 
-## Setup (Netlify)
+Only **one operator console** runs the desk at a time. A second operator device opens as **FOLLOWING** (view only) with a **Take over here** button. Linked monitor windows on the same computer are part of the same desk.
 
-1. Add new site → Import from GitHub → `texas-campus-ops`. Leave build settings as-is.
-2. Site configuration → Environment variables:
-   - `ADMIN_KEY` — operator code
-   - `CREW_KEY` — staff code
-   - `POLE_SOURCE_URL` — optional, defaults to `https://poleyard.netlify.app`
-3. Deploys → Trigger deploy (env vars only apply after a redeploy).
-4. Open the site → ☰ → Access → enter the operator code. Badge reads OPERATOR.
+## First-time setup
 
-## Operator workflow
+1. Netlify → site `texascampusops` → Environment variables: `ADMIN_KEY`, `CREW_KEY` (optional `POLE_SOURCE_URL`, default `https://poleyard.netlify.app`). Trigger a deploy.
+2. Sign in with the operator code.
+3. **Edit network** (top bar). The lines start as an auto-draft from the Pole Yard map. Fix them:
+   - Click an item, then the next item → adds a span. Keep clicking to run a row. Click the far end of an existing span → removes it. `Esc` stops.
+   - Click a span → put a **switch / fuse / recloser** on it, pick which end, give it an ID, mark it normally open.
+   - **Set source** → click the riser/pole the yard is fed from. Each span leaving the source becomes a circuit with its own breaker (CB-1, CB-2…).
+   - A span that closes a loop becomes a normally-open tie automatically.
+   - **Save & apply** reloads every screen with the new network.
+4. **M5 → Roster**: add the instructors working today.
 
-1. Call comes in on the radio.
-2. Tap **🎙 Radio Call**. The mic starts. Repeat the call (or type it): *"This is Mike, CA 14 has a cracked crossarm, urgent, assign to Andrew."*
-3. Tap the mic to stop. The form fills in: pole, issue, priority, assignee, caller. Check it — the yellow note flags anything it wasn't sure about.
-4. **Save Work Order.** It gets a number (WO-1001…), a ring on the map, and a history log.
-5. Tap 📋 in the top bar to see open orders. Tap an order to change status, reassign, add a note, or print.
+## Running the desk
 
-Statuses: New → Assigned → In Progress → On Hold → Complete / Canceled. Orders are never deleted; cancel them instead.
+- **Radio call → work order:** hold **Space** (or HOLD TO TALK) and repeat the call, or type it. Pick who called (Heard from). **→ Work order** fills pole, issue, priority, assignee and caller ("This is Mike, NLC 12 has a cracked crossarm, urgent, send Andrew"). Check the amber note, then save.
+- **Work orders (M3):** Open / Closed / ＋ New. Click one for status, priority, reassign, notes, print and history. Clicking a pole on the map → **＋ Work order here**.
+- **Instructors:** click a name (map or M5) → set status as reported (En Route, On Scene, Working…), assign an order.
+- **Devices:** click a device → **Record OPEN / CLOSE** (select-before-operate, pick who reported it). Breakers/reclosers can be locked out.
+- **Clearances:** select a device, span or pole → *Clearance on this section* → issue to an instructor. All boundaries must be open; HOLD tags go on. Release under Switching → **Released by holder**.
+- **Switching orders:** write steps (device, open/close, who), approve, **Issued on the radio** → confirm their repeat-back → **Reported complete** when they report it done.
+- **Emergency:** declare emergency traffic, log 911, open an EMERGENCY work order. The app does not call anyone.
+- **Monitors:** same multi-window war-room setup as GRID OPS (status wall, map, one-line, ops desk).
 
-Map rings: red = Emergency, amber = Urgent, blue dashed = Routine.
+## Data
 
-## Notes
+- Poles: live from Pole Yard through `/api/poles` (last good copy is cached if Pole Yard is down). Edit poles in Pole Yard; reload Campus Ops to pick them up.
+- Network, ops board (work orders, roster, device states, clearances, logs): Netlify Blobs on this site (`/api/network`, `/api/state`). The last 10 network saves are kept.
+- Each browser also keeps a local backup (IndexedDB) every 30 s.
 
-- Voice needs Chrome, Edge or Safari, mic permission, and an internet connection (Chrome sends audio to Google for speech-to-text). Typing always works.
-- Staff screens refresh work orders every 15 seconds.
-- Storage is Netlify Blobs, last-write-wins. With one operator this is a non-issue; if two operators edit the same order at the same moment, one edit is lost (the history shows what landed).
-- The 🖨 Training Trouble Order button on a pole is the original Pole Yard print form, unchanged.
-
-## Files
+## Develop
 
 ```
-index.html                       the app
-netlify.toml                     publish + functions folder
-package.json                     @netlify/blobs
-netlify/functions/poles.mjs      read-only proxy to Pole Yard + role check
-netlify/functions/policies.mjs   read-only proxy to Pole Yard policies
-netlify/functions/workorders.mjs work orders (create / update / history)
+npm install
+npm run build          # type-check + production build into dist/
+npm run campustest -- poles.json   # check the network model against a saved /api/poles file
+```
+
+```
+src/sim/campus.ts      yard items + saved network → GRID OPS topology (auto-draft, circuits, devices, ties)
+src/sim/engine.ts      GRID OPS engine + LIVE mode (real time, no simulated faults or crew chatter, live actions)
+src/live/              access codes, startup, radio-call parser
+src/ui/                GRID OPS screens; Orders.tsx (M3), Radio.tsx (M4 log), NetEditor.tsx
+netlify/functions/     poles (read-only proxy + role check), network, state
 ```
