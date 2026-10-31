@@ -134,7 +134,7 @@ function PoleView({ id }: { id: string }) {
         {(it.components ?? []).length > 0 && <><span className="k">On it</span><span className="v" style={{ whiteSpace: 'normal' }}>{it.components!.join(', ')}</span></>}
         {devs.length > 0 && <><span className="k">Devices</span><span className="v">{devs.map(d => <a key={d.id} style={{ color: 'var(--cyan)', cursor: 'pointer', marginRight: 6 }} onClick={() => setSel({ kind: 'dev', id: d.id })}>{d.id}</a>)}</span></>}
         {it.notes && <><span className="k">Notes</span><span className="v" style={{ whiteSpace: 'normal' }}>{it.notes}</span></>}
-        <span className="k">GPS</span><span className="v">{Number(it.lat).toFixed(6)}, {Number(it.lng).toFixed(6)}</span>
+        <span className="k">GPS</span><span className="v">{Number(it.gpsLat ?? it.lat).toFixed(6)}, {Number(it.gpsLng ?? it.lng).toFixed(6)}{it.gpsLat != null ? <span className="dim"> · shown on an even grid</span> : null}</span>
         <span className="k">Work orders</span><span className="v">{open.length} open · {wos.length} total</span>
       </div>
       {open.map(w => <div key={w.id} className="row" style={{ fontSize: 11, padding: '3px 0', cursor: 'pointer' }} onClick={() => setSel({ kind: 'wo', id: w.id })}><span className={`pri-${w.priority}`}>{w.id}</span> {w.status} — {w.issue}</div>)}

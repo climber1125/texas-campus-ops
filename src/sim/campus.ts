@@ -15,6 +15,8 @@ import { solve } from './network';
 export interface YardItem {
   id: string; poleId: string; itemType?: string; lat: number; lng: number;
   components?: string[]; fromId?: string; toId?: string; size?: string; notes?: string;
+  /** original Pole Yard GPS when the display position was snapped to an even grid */
+  gpsLat?: number; gpsLng?: number;
 }
 export type LinkDev = 'switch' | 'fuse' | 'recloser';
 export interface NetLink {
@@ -32,6 +34,8 @@ export interface CampusModel {
   items: YardItem[];
   /** electric items that are not tied to anything */
   orphans: string[];
+  /** blocks snapped to even grids */
+  grids: GridBlock[];
   /** item id -> node id */
   itemNode: Record<string, string>;
   /** node id -> item id */
@@ -130,9 +134,102 @@ export function draftNetwork(items: YardItem[]): NetCfg {
   return { v: 1, source: src?.id ?? null, links, draft: true };
 }
 
+// ── Even grids: the climbing yards are blocks of ~20 poles set in rows. Hand-dropped GPS
+//    pins wander a metre or two, so each block is snapped to a perfect, evenly spaced grid
+//    for display. Pole Yard's GPS is untouched (kept on the item as gpsLat / gpsLng).
+export interface GridBlock { ids: string[]; rows: number; cols: number; }
+export function snapGrids(items: YardItem[]): { items: YardItem[]; grids: GridBlock[] } {
+  const M = 111320;
+  const poles = items.filter(i => isPole(i));
+  const cos = Math.cos((poles[0] ? Number(poles[0].lat) : 33.19) * Math.PI / 180);
+  const X = (i: YardItem) => Number(i.lng) * M * cos, Y = (i: YardItem) => Number(i.lat) * M;
+  const median = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+  // 1. rows: chain each pole to its nearest east neighbour on the same line
+  const nxt = new Map<string, YardItem>(), prv = new Set<string>();
+  for (const a of [...poles].sort((p, q) => X(p) - X(q))) {
+    let best: YardItem | null = null, bs = Infinity;
+    for (const b of poles) {
+      const g = X(b) - X(a), off = Math.abs(Y(b) - Y(a));
+      if (g > 2.5 && g <= 10 && off <= 2.2) { const sc = g + off * 4; if (sc < bs) { bs = sc; best = b; } }
+    }
+    if (best && !prv.has(best.id)) { nxt.set(a.id, best); prv.add(best.id); }
+  }
+  const rows: YardItem[][] = [];
+  for (const p of poles) {
+    if (prv.has(p.id)) continue;
+    const ch = [p];
+    while (nxt.has(ch[ch.length - 1].id)) ch.push(nxt.get(ch[ch.length - 1].id)!);
+    // split where spacing jumps (a neighbouring block or a stray pole)
+    const gaps = ch.slice(1).map((q, k) => X(q) - X(ch[k]));
+    const med = median(gaps);
+    let cur = [ch[0]];
+    gaps.forEach((g, k) => { if (g > 1.7 * med || g < 0.55 * med) { if (cur.length >= 3) rows.push(cur); cur = [ch[k + 1]]; } else cur.push(ch[k + 1]); });
+    if (cur.length >= 3) rows.push(cur);
+  }
+  // 2. stack rows that sit one above another
+  const my = (r: YardItem[]) => r.reduce((a, i) => a + Y(i), 0) / r.length;
+  const overlap = (A: YardItem[], B: YardItem[]) => { const o = Math.min(X(A[A.length - 1]), X(B[B.length - 1])) - Math.max(X(A[0]), X(B[0])); return o / Math.max(1e-6, Math.min(X(A[A.length - 1]) - X(A[0]), X(B[B.length - 1]) - X(B[0]))); };
+  const below = new Map<YardItem[], YardItem[]>();
+  for (const A of rows) {
+    let best: YardItem[] | null = null;
+    for (const B of rows) {
+      if (B === A) continue;
+      const dy = my(A) - my(B);
+      if (dy >= 3 && dy <= 9 && overlap(A, B) >= 0.6 && (!best || dy < my(A) - my(best))) best = B;
+    }
+    if (best && ![...below.values()].includes(best)) below.set(A, best);
+  }
+  const hasAbove = new Set(below.values());
+  const snapped = new Map<string, [number, number]>();
+  const grids: GridBlock[] = [];
+  for (const top of rows) {
+    if (hasAbove.has(top)) continue;
+    let stack = [top];
+    while (below.has(stack[stack.length - 1])) stack.push(below.get(stack[stack.length - 1])!);
+    // even row spacing only — stop where the next row is much farther away
+    const dys = stack.slice(1).map((r, k) => my(stack[k]) - my(r));
+    const mdy = median(dys);
+    const cut = dys.findIndex(d => d > 1.6 * mdy || d < 0.6 * mdy);
+    if (cut >= 0) stack = stack.slice(0, cut + 1);
+    // a block shares its naming (NLC-…, TA…, DB…): trim rows from another set
+    const pre = (i: YardItem) => (label(i).toUpperCase().match(/^[A-Z]+/) ?? [''])[0];
+    const rowPre = (r: YardItem[]) => { const c = new Map<string, number>(); r.forEach(i => c.set(pre(i), (c.get(pre(i)) ?? 0) + 1)); return [...c.entries()].sort((a, b) => b[1] - a[1])[0][0]; };
+    const counts = new Map<string, number>(); stack.forEach(r => counts.set(rowPre(r), (counts.get(rowPre(r)) ?? 0) + 1));
+    const main = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    while (stack.length && rowPre(stack[0]) !== main) stack.shift();
+    while (stack.length && rowPre(stack[stack.length - 1]) !== main) stack.pop();
+    if (stack.length < 3) continue;
+    // 3. columns from the most common row length, then match every pole to a column
+    const n = median(stack.map(r => r.length));
+    const ref = stack.filter(r => r.length === n);
+    const colX = Array.from({ length: n }, (_, c) => ref.reduce((a, r) => a + X(r[c]), 0) / ref.length);
+    const spacing = (colX[n - 1] - colX[0]) / Math.max(1, n - 1);
+    const cell = new Map<string, [number, number]>(); const taken = new Set<string>();
+    stack.forEach((r, ri) => r.forEach(p => {
+      let c = 0; for (let k = 1; k < n; k++) if (Math.abs(X(p) - colX[k]) < Math.abs(X(p) - colX[c])) c = k;
+      if (Math.abs(X(p) - colX[c]) > spacing * 0.45 || taken.has(ri + ':' + c)) return;
+      taken.add(ri + ':' + c); cell.set(p.id, [ri, c]);
+    }));
+    // drop thin outside columns (strays that happened to line up with one or two rows)
+    const occ = (c: number) => [...cell.values()].filter(v => v[1] === c).length;
+    let c0 = 0, c1 = n - 1;
+    while (c0 < c1 && occ(c0) <= stack.length / 2) c0++;
+    while (c1 > c0 && occ(c1) <= stack.length / 2) c1--;
+    for (const [id, v] of [...cell]) if (v[1] < c0 || v[1] > c1) cell.delete(id);
+    const cols = c1 - c0 + 1;
+    if (cols < 3 || cell.size < stack.length * cols * 0.75) continue;
+    const rowY = stack.map(r => my(r));
+    const y0 = rowY[0], y1 = rowY[rowY.length - 1], x0 = colX[c0], x1 = colX[c1];
+    for (const [id, [r, c]] of cell) snapped.set(id, [(y0 + (y1 - y0) * r / (stack.length - 1)) / M, (x0 + (x1 - x0) * (c - c0) / (cols - 1)) / (M * cos)]);
+    grids.push({ ids: [...cell.keys()], rows: stack.length, cols });
+  }
+  const out = items.map(i => { const p = snapped.get(i.id); return p ? { ...i, gpsLat: Number(i.lat), gpsLng: Number(i.lng), lat: p[0], lng: p[1] } : i; });
+  return { items: out, grids };
+}
+
 // ── Build the GRID OPS topology ──────────────────────────────
 export function buildCampus(itemsIn: YardItem[], cfgIn: NetCfg | null): CampusModel {
-  const items = itemsIn.filter(i => Number.isFinite(Number(i.lat)) && Number.isFinite(Number(i.lng)));
+  const { items, grids } = snapGrids(itemsIn.filter(i => Number.isFinite(Number(i.lat)) && Number.isFinite(Number(i.lng))));
   const el = items.filter(ELECTRIC);
   const byId = new Map(el.map(i => [i.id, i]));
   const cfg: NetCfg = cfgIn && Array.isArray(cfgIn.links) ? cfgIn : draftNetwork(items);
@@ -405,7 +502,7 @@ export function buildCampus(itemsIn: YardItem[], cfgIn: NetCfg | null): CampusMo
   const blds = items.filter(i => i.itemType === 'building');
   const home: LatLng = blds.length ? itemPos(blds.find(b => /^BLD/i.test(label(b))) ?? blds[0]) : offset(sPos, -25, 15);
 
-  return { T, subs, home, bounds, items, orphans, itemNode, nodeItem, cfg: { ...cfg, source: srcId } };
+  return { T, subs, home, bounds, items, orphans, grids, itemNode, nodeItem, cfg: { ...cfg, source: srcId } };
 }
 
 // ── Location names (used everywhere GRID OPS said "Bell and Eagle") ──
