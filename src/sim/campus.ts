@@ -62,23 +62,64 @@ export function draftNetwork(items: YardItem[]): NetCfg {
   for (const s of items) if (s.itemType === 'span' && s.fromId && s.toId && byId.has(s.fromId) && byId.has(s.toId)) {
     if (join(s.fromId, s.toId)) links.push({ a: s.fromId, b: s.toId });
   }
-  // 2. directional MST over everything else
+  // 2. straight runs: yard rows are strung pole-to-pole, so chain items that sit on the same
+  //    line (E-W first, then N-S for poles that aren't in a row). Pad-mounts run on their own.
+  const M = 111320, cosL = Math.cos((el[0] ? Number(el[0].lat) : 33.19) * Math.PI / 180);
+  const xy = (i: YardItem) => [Number(i.lng) * M * cosL, Number(i.lat) * M] as const;
+  const deg = new Map<string, number>(); const bump = (x: string) => deg.set(x, (deg.get(x) ?? 0) + 1);
+  for (const l of links) { bump(l.a); bump(l.b); }
+  const runPass = (pool: YardItem[], ew: boolean, maxGap: number, maxOff: number) => {
+    const along = (i: YardItem) => (ew ? xy(i)[0] : xy(i)[1]), across = (i: YardItem) => (ew ? xy(i)[1] : xy(i)[0]);
+    const sorted = [...pool].sort((p, q) => along(p) - along(q));
+    const hasNext = new Set<string>(), hasPrev = new Set<string>();
+    for (let k = 0; k < sorted.length; k++) {
+      const a = sorted[k];
+      let best: YardItem | null = null, bs = Infinity;
+      for (let m = k + 1; m < sorted.length; m++) {
+        const b = sorted[m];
+        const g = along(b) - along(a);
+        if (g > maxGap) break;
+        const off = Math.abs(across(b) - across(a));
+        if (g < 0.5 || off > maxOff || off > g * 0.45) continue;
+        const sc = g + off * 4;
+        if (sc < bs) { bs = sc; best = b; }
+      }
+      if (!best || hasNext.has(a.id) || hasPrev.has(best.id)) continue;
+      if (join(a.id, best.id)) { links.push({ a: a.id, b: best.id }); hasNext.add(a.id); hasPrev.add(best.id); bump(a.id); bump(best.id); }
+    }
+  };
+  const poles = el.filter(isPole), gear = el.filter(i => i.itemType === 'transformer');
+  runPass(poles, true, 30, 2.6);
+  runPass(gear, true, 30, 3);
+  runPass(poles.filter(i => !deg.get(i.id)), false, 45, 2.6);
+  runPass(poles.filter(i => (deg.get(i.id) ?? 0) < 2), false, 12, 1.6); // short N-S hops close up grid columns
+  // 3. tie the runs together: minimum spanning tree preferring straight N-S / E-W jumps
+  //    (pedestals are left out here and hung off the nearest gear in step 4)
+  const core = el.filter(i => i.itemType !== 'pedestal');
   const pairs: { a: string; b: string; w: number }[] = [];
-  for (let i = 0; i < el.length; i++) {
-    const pa = itemPos(el[i]);
-    for (let j = i + 1; j < el.length; j++) {
-      const pb = itemPos(el[j]);
+  for (let i = 0; i < core.length; i++) {
+    const pa = itemPos(core[i]);
+    for (let j = i + 1; j < core.length; j++) {
+      const pb = itemPos(core[j]);
       const d = dist(pa, pb);
       if (d > 400) continue;
       const dy = Math.abs(pa[0] - pb[0]) * 111320, dx = Math.abs(pa[1] - pb[1]) * 111320 * Math.cos(pa[0] * Math.PI / 180);
       const skew = Math.min(dx, dy) / (Math.max(dx, dy) || 1); // 0 = straight, 1 = diagonal
-      const mixed = isPole(el[i]) !== isPole(el[j]) ? 1.4 : 1; // keep UG gear on its own run when possible
-      pairs.push({ a: el[i].id, b: el[j].id, w: d * (1 + 1.6 * skew) * mixed });
+      const mixed = isPole(core[i]) !== isPole(core[j]) ? 1.4 : 1; // keep UG gear on its own run when possible
+      // joining at a run's end beats tapping the middle of a row
+      const ends = ((deg.get(core[i].id) ?? 0) <= 1 ? 0 : 1) + ((deg.get(core[j].id) ?? 0) <= 1 ? 0 : 1);
+      pairs.push({ a: core[i].id, b: core[j].id, w: d * (1 + 1.6 * skew) * mixed * (1 + 0.25 * ends) });
     }
   }
   pairs.sort((x, y) => x.w - y.w);
-  for (const p of pairs) if (join(p.a, p.b)) links.push({ a: p.a, b: p.b });
-  // 3. anything still isolated (> 400 m away): nearest neighbour
+  for (const p of pairs) if (join(p.a, p.b)) { links.push({ a: p.a, b: p.b }); bump(p.a); bump(p.b); }
+  // 4. pedestals: service stub to the nearest pad-mount (or pole)
+  for (const pd of el.filter(i => i.itemType === 'pedestal')) {
+    let best: YardItem | null = null, bd = Infinity;
+    for (const c of core) { const d = dist(itemPos(pd), itemPos(c)) * (c.itemType === 'transformer' ? 0.6 : 1); if (d < bd) { bd = d; best = c; } }
+    if (best && join(pd.id, best.id)) links.push({ a: best.id, b: pd.id });
+  }
+  // 5. anything still isolated: nearest neighbour
   for (const i of el) {
     if (find(i.id) === find(el[0].id)) continue;
     let best: YardItem | null = null, bd = Infinity;
