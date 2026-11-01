@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCtx } from './ctx';
 import { PttBar } from './VoiceUi';
 import { ACCESS } from '../live/access';
-import { tellUnit, audioUrl, Recorder, uploadAudio, enablePush, pushState, unlockChime } from '../live/comms';
+import { tellUnit, audioUrl, Recorder, sendClip, enablePush, pushState, unlockChime, beep, primeMic } from '../live/comms';
 
 export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _a, talkBack, setTalkBack, aiAvail: _ai, aiOn: _ao, setAiOn: _sa }: {
   keyed: string | null; voiceOn: boolean; setVoiceOn(v: boolean): void; audioOn: boolean; talkBack: boolean; setTalkBack(v: boolean): void; aiAvail: boolean; aiOn: boolean; setAiOn(v: boolean): void;
@@ -15,7 +15,7 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
   const [unit, setUnit] = useState('');
   const [dir, setDir] = useState<'from' | 'to'>('from');
   const [text, setText] = useState('');
-  const [vrec, setVrec] = useState<'idle' | 'rec' | 'send'>('idle');
+  const [vrec, setVrec] = useState<'idle' | 'rec'>('idle');
   const vref = useRef<Recorder | null>(null);
   const [opAuto, setOpAuto] = useState(() => { try { return localStorage.getItem('campusOpsOpAutoPlay') !== '0'; } catch { return true; } });
   const [alertsOn, setAlertsOn] = useState(true);
@@ -24,20 +24,21 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
     if (vrec !== 'idle' || readOnly) return;
     unlockChime();
     const r = new Recorder(); vref.current = r;
-    const err = await r.start();
-    if (err) { flash(err, 'warn'); vref.current = null; return; }
     setVrec('rec');
+    const err = await r.start(true);
+    if (err) { flash(err, 'warn'); vref.current = null; setVrec('idle'); }
   };
   const voiceUp = async () => {
-    const r = vref.current; if (!r || vrec !== 'rec') return;
-    vref.current = null; setVrec('send');
+    const r = vref.current; if (!r) return;
+    vref.current = null;
     const clip = await r.stop();
-    if (!clip) { setVrec('idle'); flash('Too short — hold while you talk', 'warn'); return; }
-    const id = await uploadAudio(clip.blob);
-    if (!id) { setVrec('idle'); flash('Voice clip did not upload', 'warn'); return; }
-    const err = await tellUnit(e, unit, clip.text, { audio: id, dur: Math.round(clip.dur) });
     setVrec('idle');
-    if (err) flash(err, 'warn'); else flash(`Voice sent to ${unit ? e.s.trucks[unit]?.crew ?? unit : 'all units'}`, 'good');
+    if (!clip) { flash('Too short — hold while you talk', 'warn'); return; }
+    beep('tx');
+    const to = unit || 'ALL';
+    const m = await sendClip(clip, to);
+    if (typeof m === 'string') { flash(m, 'warn'); return; }
+    e.liveRadio(unit, clip.text, true, m.audio, m.dur);
   };
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -100,8 +101,8 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
             onKeyDown={ev => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); log(); } }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <button className="btn sm" disabled={!text.trim()} onClick={log}>{dir === 'to' ? 'Send' : 'Log'}</button>
-            {Recorder.supported() && <button className={`btn sm ${vrec === 'rec' ? 'danger on' : ''}`} title="Hold to record a voice message to the selected instructor (or all units)" disabled={vrec === 'send'}
-              onPointerDown={ev => { ev.preventDefault(); try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* none */ } voiceDown(); }} onPointerUp={() => voiceUp()} onPointerCancel={() => voiceUp()}>{vrec === 'rec' ? '● Recording' : vrec === 'send' ? 'Sending…' : '🎙 Voice'}</button>}
+            {Recorder.supported() && <button className={`btn sm ${vrec === 'rec' ? 'danger on' : ''}`} title="Push-to-talk to the phones: hold, talk, let go — it sends (selected instructor, or all units)"
+              onPointerEnter={() => primeMic()} onPointerDown={ev => { ev.preventDefault(); try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* none */ } voiceDown(); }} onPointerUp={() => voiceUp()} onPointerCancel={() => voiceUp()}>{vrec === 'rec' ? '● TALKING' : `🎙 PTT ${unit ? e.s.trucks[unit]?.crew.split(' ')[0] ?? '' : 'all'}`}</button>}
             <button className="btn pri sm" disabled={!text.trim()} onClick={toWo}>→ Work order</button>
           </div>
         </div>

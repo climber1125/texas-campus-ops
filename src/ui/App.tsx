@@ -26,7 +26,7 @@ import { ACCESS, getJson, putJson, setKey } from '../live/access';
 import { BOOT, reconcile } from '../live/boot';
 import { CAMPUS } from '../sim/topology';
 import type { WoDraft } from './ctx';
-import { fetchMsgs, chime, audioUrl } from '../live/comms';
+import { fetchMsgs, chime, beep, audioUrl, livePoll } from '../live/comms';
 import type { LatLng } from '../sim/types';
 
 interface Toast { id: number; text: string; level: string; t: string; born: number; }
@@ -335,26 +335,24 @@ export default function App() {
   // ── Crew phones → operator desk: pick up channel traffic and apply it ──
   useEffect(() => {
     if (!isMaster || desk !== 'operator') return;
-    let stop = false;
-    const poll = async () => {
+    const lp = livePoll(async () => {
       const F = eRef.current.s.scen.flags;
       const since = Math.max(F.lastMsgTs ?? 0, Date.now() - 3600 * 1000) - 1;
       const m = await fetchMsgs(since);
-      if (stop || !m) return;
+      if (!m) return false;
       const seen = new Set<string>(F.seenMsg ?? []);
       const fresh = m.filter(x => x.from !== 'CONTROL' && !seen.has(x.id)).sort((a, b) => a.ts - b.ts);
-      if (!fresh.length) return;
+      if (!fresh.length) return false;
       for (const x of fresh) eRef.current.liveIncoming(x);
       const urgent = fresh.some(x => x.kind === 'emergency');
-      chime(urgent);
-      for (const x of fresh.slice(-3)) flash(`${eRef.current.s.trucks[x.from]?.crew ?? x.fromName ?? x.from}: ${x.text || '🎙 voice message'}`, x.kind === 'emergency' ? 'alarm' : 'info');
+      if (urgent) chime(true); else beep('rx');
+      for (const x of fresh.slice(-3)) flash(`${eRef.current.s.trucks[x.from]?.crew ?? x.fromName ?? x.from}: ${x.text || '🎙 voice'}`, x.kind === 'emergency' ? 'alarm' : 'info');
       const clip = fresh.filter(x => x.audio).at(-1);
       try { if (clip && localStorage.getItem('campusOpsOpAutoPlay') !== '0') void new Audio(audioUrl(clip.audio!)).play().catch(() => undefined); } catch { /* none */ }
       broadcast(); setVer(v => v + 1);
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => { stop = true; clearInterval(id); };
+      return true;
+    }, 1000, 2000);
+    return () => lp.stop();
   }, [isMaster, desk]); // eslint-disable-line react-hooks/exhaustive-deps
   const takeOver = async () => {
     const r = await getJson<{ s: any; readings: any; devKw: any }>('/api/state');

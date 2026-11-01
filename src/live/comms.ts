@@ -39,30 +39,46 @@ export const audioUrl = (id: string) => `/api/audio/${id}`;
 
 // ── Hold-to-talk recorder: audio clip + best-effort transcript ──
 export interface Clip { blob: Blob; dur: number; text: string; }
+// The mic stays open for a few minutes after a transmission so the next press starts instantly
+// (no permission delay, no clipped first word). Closed when the page is hidden.
+let warm: MediaStream | null = null, warmTimer = 0;
+const warmLive = () => !!warm && warm.getAudioTracks().some(t => t.readyState === 'live');
+function releaseWarm() { warm?.getTracks().forEach(t => t.stop()); warm = null; }
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') releaseWarm(); });
+async function micStream(): Promise<MediaStream> {
+  if (!warmLive()) warm = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  clearTimeout(warmTimer);
+  warmTimer = window.setTimeout(releaseWarm, 3 * 60 * 1000);
+  return warm!;
+}
+/** Ask for the mic ahead of time (call from a tap) so the first push-to-talk starts instantly. */
+export async function primeMic(): Promise<string | null> {
+  try { await micStream(); return null; } catch (e: any) { return e?.name === 'NotAllowedError' ? 'Microphone blocked — allow the mic for this site' : 'No microphone available'; }
+}
+
 export class Recorder {
   private rec: MediaRecorder | null = null;
   private chunks: Blob[] = [];
-  private stream: MediaStream | null = null;
   private sr: any = null;
   private text = '';
   private t0 = 0;
   onInterim?: (t: string) => void;
   static supported() { return typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof (window as any).MediaRecorder !== 'undefined'; }
-  async start(): Promise<string | null> {
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-    } catch (e: any) { return e?.name === 'NotAllowedError' ? 'Microphone blocked — allow the mic for this site' : 'No microphone available'; }
+  async start(withText = true): Promise<string | null> {
+    let stream: MediaStream;
+    try { stream = await micStream(); }
+    catch (e: any) { return e?.name === 'NotAllowedError' ? 'Microphone blocked — allow the mic for this site' : 'No microphone available'; }
     const types = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'];
     const type = types.find(t => (window as any).MediaRecorder.isTypeSupported?.(t)) ?? '';
-    this.rec = new MediaRecorder(this.stream, type ? { mimeType: type, audioBitsPerSecond: 24000 } : undefined);
+    this.rec = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 24000 } : undefined);
     this.chunks = [];
     this.rec.ondataavailable = ev => { if (ev.data.size) this.chunks.push(ev.data); };
-    this.rec.start(250);
+    this.rec.start(200);
     this.t0 = Date.now();
-    // transcript alongside (Chrome / Android / Safari); if it can't run, the clip still sends
+    // transcript alongside, best effort — the clip never waits for it
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     this.text = '';
-    if (SR) {
+    if (SR && withText) {
       try {
         this.sr = new SR(); this.sr.lang = 'en-US'; this.sr.continuous = true; this.sr.interimResults = true;
         this.sr.onresult = (ev: any) => { let f = '', i = ''; for (let k = 0; k < ev.results.length; k++) { const r = ev.results[k]; if (r.isFinal) f += r[0].transcript + ' '; else i += r[0].transcript + ' '; } this.text = (f + i).trim(); this.onInterim?.(this.text); };
@@ -72,22 +88,63 @@ export class Recorder {
     }
     return null;
   }
+  /** Stops immediately and hands back the clip (keeps the mic warm). */
   stop(): Promise<Clip | null> {
     return new Promise(res => {
       const rec = this.rec;
       try { this.sr?.stop(); } catch { /* ended */ }
       if (!rec) { res(null); return; }
+      const dur = (Date.now() - this.t0) / 1000;
       rec.onstop = () => {
-        this.stream?.getTracks().forEach(t => t.stop());
-        const dur = (Date.now() - this.t0) / 1000;
         const blob = new Blob(this.chunks, { type: rec.mimeType || 'audio/webm' });
         this.rec = null;
-        // give the recogniser a moment to deliver its final words
-        setTimeout(() => res(dur < 0.6 || !blob.size ? null : { blob, dur, text: this.text }), 350);
+        res(dur < 0.5 || !blob.size ? null : { blob, dur, text: this.text });
       };
-      try { rec.stop(); } catch { res(null); }
+      try { rec.requestData(); rec.stop(); } catch { res(null); }
     });
   }
+}
+
+/** Push-to-talk: upload the clip and post it on the channel in ONE request. */
+export async function sendClip(clip: Clip, to: string, unit?: string, name?: string, kind: ChanMsg['kind'] = 'msg'): Promise<ChanMsg | string> {
+  const q = new URLSearchParams({ send: '1', to, dur: String(Math.round(clip.dur)), text: clip.text.slice(0, 500), kind, name: name ?? '' });
+  try {
+    const r = await fetch(`/api/audio?${q}`, { method: 'POST', headers: { 'Content-Type': clip.blob.type || 'audio/webm', ...hdr(), ...(unit ? { 'x-unit': unit } : {}) }, body: clip.blob, signal: AbortSignal.timeout(30000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.msg) return j.error || `Voice did not send (${r.status})`;
+    return j.msg as ChanMsg;
+  } catch { return 'No connection — voice not sent'; }
+}
+
+/** Short radio-style chirp: key-up (outgoing) or incoming. */
+export function beep(kind: 'tx' | 'rx' = 'tx') {
+  try {
+    actx = actx ?? new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = actx!, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'square'; o.frequency.value = kind === 'tx' ? 1750 : 1200;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
+    o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.1);
+  } catch { /* none */ }
+}
+
+/** Poll fast for a minute after any traffic, slower when the channel is quiet; a push wakes it at once. */
+export function livePoll(fn: () => Promise<boolean | void>, fast = 1000, slow = 2500): { bump(): void; stop(): void } {
+  let hot = 0, t = 0, stopped = false, busy = false;
+  const run = async () => {
+    if (stopped) return;
+    if (!busy) { busy = true; try { if (await fn()) hot = Date.now(); } catch { /* next */ } busy = false; }
+    if (!stopped) t = window.setTimeout(run, Date.now() - hot < 60000 ? fast : document.visibilityState === 'visible' ? slow : 8000);
+  };
+  const wake = () => { clearTimeout(t); run(); };
+  const onSw = (ev: MessageEvent) => { if (ev.data?.type === 'campus-msg') { hot = Date.now(); wake(); } };
+  const onVis = () => { if (document.visibilityState === 'visible') wake(); };
+  try { navigator.serviceWorker?.addEventListener('message', onSw); } catch { /* none */ }
+  document.addEventListener('visibilitychange', onVis);
+  run();
+  return {
+    bump() { hot = Date.now(); wake(); },
+    stop() { stopped = true; clearTimeout(t); try { navigator.serviceWorker?.removeEventListener('message', onSw); } catch { /* none */ } document.removeEventListener('visibilitychange', onVis); },
+  };
 }
 
 // ── Lock-screen alerts (Web Push) ────────────────────────────

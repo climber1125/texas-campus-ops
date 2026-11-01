@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getJson, setKey } from '../live/access';
 import { BOOT } from '../live/boot';
 import type { SimState, WorkOrder, Truck } from '../sim/types';
-import { sendMsg, fetchMsgs, uploadAudio, audioUrl, Recorder, enablePush, pushState, chime, unlockChime, STATUS_TAPS, type ChanMsg } from '../live/comms';
+import { sendMsg, fetchMsgs, sendClip, audioUrl, Recorder, enablePush, pushState, chime, beep, unlockChime, primeMic, livePoll, STATUS_TAPS, type ChanMsg } from '../live/comms';
 
 const UNIT_KEY = 'campusOpsUnit';
 const RANK: Record<string, number> = { Emergency: 0, Urgent: 1, Routine: 2 };
@@ -23,7 +23,7 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
   const [alerts, setAlerts] = useState<string>('off');
   const [toast, setToast] = useState<{ t: string; bad?: boolean } | null>(null);
   const [text, setText] = useState('');
-  const [rec, setRec] = useState<'idle' | 'rec' | 'send'>('idle');
+  const [rec, setRec] = useState<'idle' | 'rec'>('idle');
   const [interim, setInterim] = useState('');
   const [autoPlay, setAutoPlay] = useState(() => { try { return localStorage.getItem('campusOpsAutoPlay') !== '0'; } catch { return true; } });
   const recRef = useRef<Recorder | null>(null);
@@ -47,29 +47,30 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
     return () => { stop = true; clearInterval(id); };
   }, []);
 
-  // channel
+  // channel: fast after any traffic, a push wakes it instantly
+  const pollRef = useRef<{ bump(): void } | null>(null);
   useEffect(() => {
-    let stop = false;
-    const poll = async () => {
+    const lp = livePoll(async () => {
       const m = await fetchMsgs(lastTs.current);
-      if (stop || !m) return;
-      if (!m.length) { first.current = false; return; }
+      if (!m) return false;
+      if (!m.length) { first.current = false; return false; }
       lastTs.current = Math.max(lastTs.current, ...m.map(x => x.ts));
-      setMsgs(prev => { const seen = new Set(prev.map(x => x.id)); return [...prev, ...m.filter(x => !seen.has(x.id))].slice(-300); });
+      let fresh: ChanMsg[] = [];
+      setMsgs(prev => { const seen = new Set(prev.map(x => x.id)); fresh = m.filter(x => !seen.has(x.id)); return [...prev, ...fresh].slice(-300); });
       const me = unitRef.current;
       const forMe = m.filter(x => x.from === 'CONTROL' && (x.to === me || x.to === 'ALL'));
       if (!first.current && forMe.length) {
-        chime(forMe.some(x => x.kind === 'emergency' || x.priority === 'Emergency'));
+        const big = forMe.some(x => x.kind === 'emergency' || x.priority === 'Emergency' || x.kind === 'assign');
+        if (big) chime(forMe.some(x => x.kind === 'emergency' || x.priority === 'Emergency')); else beep('rx');
         if (tabRef.current !== 'chan') setUnread(n => n + forMe.length);
         const clip = forMe.filter(x => x.audio).at(-1);
         if (clip && document.visibilityState === 'visible' && localStorage.getItem('campusOpsAutoPlay') !== '0') { try { void new Audio(audioUrl(clip.audio!)).play().catch(() => undefined); } catch { /* none */ } }
       }
       first.current = false;
-    };
-    poll(); const id = setInterval(poll, 2500);
-    const vis = () => { if (document.visibilityState === 'visible') poll(); };
-    document.addEventListener('visibilitychange', vis);
-    return () => { stop = true; clearInterval(id); document.removeEventListener('visibilitychange', vis); };
+      return true;
+    });
+    pollRef.current = lp;
+    return () => lp.stop();
   }, []);
   useEffect(() => { pushState().then(setAlerts); }, [unit]);
   useEffect(() => { if (tab === 'chan') { setUnread(0); setTimeout(() => { const b = listRef.current; if (b) b.scrollTop = b.scrollHeight; }, 30); } }, [tab, msgs.length]);
@@ -101,20 +102,26 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
     unlockChime();
     const r = new Recorder(); recRef.current = r;
     r.onInterim = setInterim;
-    const err = await r.start();
-    if (err) { say(err, true); recRef.current = null; return; }
     setInterim(''); setRec('rec');
-    try { navigator.vibrate?.(40); } catch { /* none */ }
+    try { navigator.vibrate?.(30); } catch { /* none */ }
+    const err = await r.start();
+    if (err) { say(err, true); recRef.current = null; setRec('idle'); }
   };
   const pttUp = async () => {
-    const r = recRef.current; if (!r || rec !== 'rec') return;
-    recRef.current = null; setRec('send');
+    const r = recRef.current; if (!r) return;
+    recRef.current = null;
     const clip = await r.stop();
-    if (!clip) { setRec('idle'); say('Too short — hold the button while you talk', true); return; }
-    const id = await uploadAudio(clip.blob);
-    if (!id) { setRec('idle'); say('Voice clip did not upload — check signal', true); return; }
-    await send({ to: 'CONTROL', audio: id, dur: Math.round(clip.dur), text: clip.text }, 'Sent to Control');
-    setInterim(''); setRec('idle');
+    if (!clip) { setRec('idle'); setInterim(''); say('Too short — hold the button while you talk', true); return; }
+    beep('tx');
+    setRec('idle'); setInterim('');
+    // show it right away; it is on its way
+    const tmp: ChanMsg = { id: 'tmp-' + Date.now(), ts: Date.now(), from: unit, fromName: myName, to: 'CONTROL', text: clip.text || 'Sending voice…', kind: 'msg' };
+    setMsgs(prev => [...prev, tmp]);
+    const m = await sendClip(clip, 'CONTROL', unit, myName);
+    setMsgs(prev => prev.filter(x => x.id !== tmp.id).concat(typeof m === 'string' ? [] : prev.some(x => x.id === m.id) ? [] : [m]));
+    if (typeof m === 'string') { say(m, true); return; }
+    lastTs.current = Math.max(lastTs.current, m.ts - 1);
+    pollRef.current?.bump();
   };
 
   const alertsBtn = async () => {
@@ -130,7 +137,7 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
         <div className="crew-body">
           <h2 className="crew-h">Who are you?</h2>
           {units.length ? units.map(u => (
-            <button key={u.id} className="crew-pick" onClick={() => { setUnit(u.id); unlockChime(); }}><b>{u.crew}</b><span className="dim">{u.type}</span></button>
+            <button key={u.id} className="crew-pick" onClick={() => { setUnit(u.id); unlockChime(); primeMic(); }}><b>{u.crew}</b><span className="dim">{u.type}</span></button>
           )) : <div className="warnbox">Nobody is on the board yet. Ask the operator to add you (M5 → Roster), then pull down to refresh.</div>}
           {!online && <div className="warnbox" style={{ marginTop: 10 }}>No connection to the server.</div>}
         </div>
@@ -152,7 +159,7 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
 
       <div className="crew-tabs">
         <button className={tab === 'orders' ? 'on' : ''} onClick={() => setTab('orders')}>My orders{mine.length ? <span className="badge">{mine.length}</span> : null}</button>
-        <button className={tab === 'chan' ? 'on' : ''} onClick={() => setTab('chan')}>Radio{unread ? <span className="badge red">{unread}</span> : null}</button>
+        <button className={tab === 'chan' ? 'on' : ''} onClick={() => { setTab('chan'); unlockChime(); primeMic().then(err => { if (err) say(err, true); }); }}>Radio{unread ? <span className="badge red">{unread}</span> : null}</button>
       </div>
 
       {tab === 'orders' ? (
@@ -205,13 +212,13 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
             <button className="btn sm danger" onClick={() => { if (confirm('Send EMERGENCY to Control?')) send({ to: 'CONTROL', kind: 'emergency', priority: 'Emergency', text: `EMERGENCY — ${myName} needs help${mine[0] ? ' at ' + mine[0].loc : ''}` }, 'EMERGENCY sent'); }}>🚨 Emergency</button>
             <label className="dim" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, marginLeft: 'auto' }}><input type="checkbox" checked={autoPlay} onChange={ev => { setAutoPlay(ev.target.checked); try { localStorage.setItem('campusOpsAutoPlay', ev.target.checked ? '1' : '0'); } catch { /* none */ } }} />auto-play</label>
           </div>
-          {rec !== 'idle' && <div className="crew-interim">{rec === 'rec' ? (interim || 'Recording… talk now') : 'Sending…'}</div>}
+          {rec === 'rec' && <div className="crew-interim">{interim || '● Transmitting… talk now'}</div>}
           <button
             className={`crew-ptt ${rec}`}
-            disabled={!Recorder.supported() || rec === 'send'}
+            disabled={!Recorder.supported()}
             onPointerDown={ev => { ev.preventDefault(); try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* none */ } pttDown(); }}
             onPointerUp={() => pttUp()} onPointerCancel={() => pttUp()} onContextMenu={ev => ev.preventDefault()}
-          >{!Recorder.supported() ? 'Voice not supported here' : rec === 'rec' ? '● RELEASE TO SEND' : rec === 'send' ? 'SENDING…' : 'HOLD TO TALK'}</button>
+          >{!Recorder.supported() ? 'Voice not supported here' : rec === 'rec' ? '● TRANSMITTING' : 'HOLD TO TALK'}</button>
           <form className="crew-type" onSubmit={async ev => { ev.preventDefault(); if (!text.trim()) return; if (await send({ to: 'CONTROL', text: text.trim() })) setText(''); }}>
             <input value={text} onChange={ev => setText(ev.target.value)} placeholder="Type to Control" enterKeyHint="send" />
             <button className="btn pri" type="submit" disabled={!text.trim()}>Send</button>

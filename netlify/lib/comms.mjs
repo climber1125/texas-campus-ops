@@ -47,3 +47,28 @@ export async function fanout(msg) {
   }));
   return want.length;
 }
+
+const clean = (v, n) => String(v ?? "").trim().slice(0, n);
+/** Build, store and push one channel message. `b` is the request body / params, `req` the request. */
+export async function postMessage(req, role, b) {
+  const from = role === "admin" && !req.headers.get("x-unit") ? "CONTROL" : clean(req.headers.get("x-unit"), 12).toUpperCase();
+  if (!from) return { error: "pick who you are first", status: 400 };
+  const to = clean(b.to, 12).toUpperCase() || (from === "CONTROL" ? "ALL" : "CONTROL");
+  if (from !== "CONTROL" && to !== "CONTROL") return { error: "crew phones talk to Control", status: 400 };
+  const text = clean(b.text, 600), audio = clean(b.audio, 40);
+  if (!text && !audio && !b.status) return { error: "empty message", status: 400 };
+  const ts = Date.now();
+  const rnd = Math.random().toString(36).slice(2, 7);
+  const id = `${ts}-${rnd}`;
+  const msg = {
+    id, ts, from, to, fromName: clean(b.fromName || req.headers.get("x-name"), 60), text, audio: audio || undefined,
+    dur: Number(b.dur) > 0 ? Math.min(60, Number(b.dur)) : undefined,
+    kind: ["msg", "status", "assign", "emergency"].includes(b.kind) ? b.kind : "msg",
+    wo: clean(b.wo, 16) || undefined, status: clean(b.status, 16) || undefined, priority: clean(b.priority, 12) || undefined,
+  };
+  const s = store();
+  await s.setJSON(`m/${String(ts).padStart(13, "0")}-${rnd}`, msg);
+  let pushed = 0;
+  try { pushed = await fanout(msg); } catch (e) { console.error("push failed", e); }
+  return { msg: { ...msg, pushed } };
+}
