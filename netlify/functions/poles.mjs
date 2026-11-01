@@ -21,10 +21,10 @@ const json = (data, status = 200, extra = {}) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...cors, ...extra } });
 
 function roleFor(req) {
-  const admin = Netlify.env.get("ADMIN_KEY") || "";
-  const crew = Netlify.env.get("CREW_KEY") || "";
+  const admin = (Netlify.env.get("ADMIN_KEY") || Netlify.env.get("ops") || Netlify.env.get("OPS") || "").trim();
+  const crew = (Netlify.env.get("CREW_KEY") || Netlify.env.get("crew") || Netlify.env.get("CREW") || "").trim();
   if (!admin && !crew) return "admin";
-  const key = req.headers.get("x-key") || "";
+  const key = (req.headers.get("x-key") || "").trim();
   if (admin && key === admin) return "admin";
   if (crew && key === crew) return "crew";
   return "viewer";
