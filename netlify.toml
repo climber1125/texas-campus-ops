@@ -4,6 +4,9 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # The access codes are only read by the functions at request time, never built into the page.
+  # A short code can match ordinary text in the bundle and trip secrets scanning, so skip these keys.
+  SECRETS_SCAN_OMIT_KEYS = "ops_key,OPS_KEY,ops,OPS,ADMIN_KEY,crew_key,CREW_KEY,crew,CREW"
 
 [functions]
   directory = "netlify/functions"
