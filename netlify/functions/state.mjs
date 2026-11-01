@@ -8,7 +8,7 @@ import { getStore } from "@netlify/blobs";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,PUT,OPTIONS", "Access-Control-Allow-Headers": "Content-Type, x-key" };
 const json = (d, status = 200) => new Response(JSON.stringify(d), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...cors } });
 function roleFor(req) {
-  const admin = (Netlify.env.get("ADMIN_KEY") || Netlify.env.get("ops") || Netlify.env.get("OPS") || "").trim(), crew = (Netlify.env.get("CREW_KEY") || Netlify.env.get("crew") || Netlify.env.get("CREW") || "").trim();
+  const admin = (Netlify.env.get("ADMIN_KEY") || Netlify.env.get("ops_key") || Netlify.env.get("OPS_KEY") || Netlify.env.get("ops") || Netlify.env.get("OPS") || "").trim(), crew = (Netlify.env.get("CREW_KEY") || Netlify.env.get("crew_key") || Netlify.env.get("crew") || Netlify.env.get("CREW") || "").trim();
   if (!admin && !crew) return "admin";
   const key = (req.headers.get("x-key") || "").trim();
   if (admin && key === admin) return "admin";
