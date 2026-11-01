@@ -41,10 +41,22 @@ Only **one operator console** runs the desk at a time. A second operator device 
 - **Emergency:** declare emergency traffic, log 911, open an EMERGENCY work order. The app does not call anyone.
 - **Monitors:** same multi-window war-room setup as GRID OPS (status wall, map, one-line, ops desk).
 
+## Crew phones (no radios needed)
+
+Instructors open the site on their phone and sign in with the **crew code**. Phones get the **crew screen**; a staff tablet or laptop gets the full board (switch with 📱 Crew phone / Full board).
+
+- **Who are you?** pick your name from the board (the operator adds people on M5 → Roster).
+- **My orders:** every work order assigned to you, with one-tap **Acknowledge / En route / On scene / Working / Complete**. Taps update the board on the operator desk automatically.
+- **Radio:** **HOLD TO TALK** sends a voice clip to Control with an automatic transcript; or type. Quick buttons: Need clearance, Clear / grounds off, 🚨 Emergency (raises a P1 alarm on the desk).
+- **🔔 Alerts:** lock-screen notifications when Control sends you something. Android: Chrome, tap 🔔. iPhone (iOS 16.4+): Share → **Add to Home Screen**, open from the icon, then tap 🔔.
+
+Operator side (M4 Radio): crew traffic arrives with a chime, voice clips play (Auto-play) and can be replayed. **Said to** + pick a name (or nobody = all units) → **Send** text or hold **🎙 Voice**. Assigning a work order, issuing/releasing a clearance and issuing a switching step message that instructor's phone automatically. 🔔 Alerts on the console gives desktop notifications when the tab is in the background.
+
 ## Data
 
 - Poles: live from Pole Yard through `/api/poles` (last good copy is cached if Pole Yard is down). Edit poles in Pole Yard; reload Campus Ops to pick them up.
 - Network, ops board (work orders, roster, device states, clearances, logs): Netlify Blobs on this site (`/api/network`, `/api/state`). The last 10 network saves are kept.
+- Channel messages (kept 3 days), voice clips and alert subscriptions: Netlify Blobs (`/api/messages`, `/api/audio`, `/api/push`). Alert keys are generated automatically on first use.
 - Each browser also keeps a local backup (IndexedDB) every 30 s.
 
 ## Develop

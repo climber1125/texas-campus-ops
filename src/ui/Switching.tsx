@@ -5,6 +5,7 @@ import { useCtx } from './ctx';
 import type { DevEl } from '../sim/types';
 import { devWord } from '../sim/radio';
 import { SayOr } from './VoiceUi';
+import { tellUnit } from '../live/comms';
 
 export function SwitchingView() {
   const { e, swPrefill, setSwPrefill, openSbo, flash, setSel, readOnly } = useCtx();
@@ -56,7 +57,7 @@ export function SwitchingView() {
             <div className="mono"><b className="c-amber">{c.id}</b> → {who(c.truck)}</div>
             <div style={{ fontSize: 10.5 }}>HOLD: {c.devs.join(', ')}</div>
             <div className="dim" style={{ fontSize: 10 }}>Issued {e.hhmm(c.issued)} · {c.purpose}</div>
-            {e.live ? (!readOnly && <button className="btn good sm" style={{ marginTop: 3 }} onClick={() => { if (confirm(`${who(c.truck)} released ${c.id} on the radio — grounds off, crew clear? Remove the HOLD tags.`)) run(e.liveRelease(c.id)); }}>Released by holder</button>)
+            {e.live ? (!readOnly && <button className="btn good sm" style={{ marginTop: 3 }} onClick={() => { if (confirm(`${who(c.truck)} released ${c.id} on the radio — grounds off, crew clear? Remove the HOLD tags.`)) { const er = e.liveRelease(c.id); run(er); if (!er) tellUnit(e, c.truck, `Copy — clearance ${c.id} released, HOLD tags removed. Stand by.`); } }}>Released by holder</button>)
               : <button className="btn danger sm" style={{ marginTop: 3 }} onClick={() => { if (confirm(`Force-release ${c.id} without a release from Truck ${c.truck}? This is a serious safety violation and will be recorded.`)) run(e.releaseClearance(c.id, true)); }}>Force release…</button>}
           </div>
         ))}
@@ -107,7 +108,7 @@ export function SwitchingView() {
                     <div className="q">{step.rbAction?.toUpperCase()} {step.rbDev} — {devWord(e.T.els[step.rbDev!] as DevEl)} at {(e.T.els[step.rbDev!] as DevEl).loc}</div>
                     <div className="dim" style={{ marginBottom: 6 }}>Order says: <b className="mono">{step.action.toUpperCase()} {step.dev}</b>. Compare carefully before confirming.</div>
                     <div className="acts">
-                      <SayOr phrase="That's correct, perform"><button className="btn good" onClick={() => run(e.confirmRepeat(o.id, true))}>“That's correct — perform”</button></SayOr>
+                      <SayOr phrase="That's correct, perform"><button className="btn good" onClick={() => { const er = e.confirmRepeat(o.id, true); run(er); if (!er && e.live) tellUnit(e, step.exec, `That's correct — perform ${o.id} step ${o.cur + 1}: ${step.action.toUpperCase()} ${step.dev}. Report when done.`); }}>“That's correct — perform”</button></SayOr>
                       <SayOr phrase={`Negative. Step ${o.cur + 1}: ${step.action} ${step.dev}. Repeat.`}><button className="btn danger" onClick={() => run(e.confirmRepeat(o.id, false))}>“Negative — repeat”</button></SayOr>
                     </div>
                   </>
@@ -116,7 +117,7 @@ export function SwitchingView() {
                     <span>Next: step {o.cur + 1} — <b className="mono">{step.action.toUpperCase()} {step.dev}</b> by {who(step.exec)}</span>
                     {step.exec === 'SCADA'
                       ? <button className="btn pri" onClick={() => openSbo({ dev: step.dev, action: step.action, order: o.id, viaOrder: true })}>Select / operate…</button>
-                      : <SayOr phrase={`Truck ${step.exec}, ${o.id} step ${o.cur + 1}: ${step.action} ${devWord(e.T.els[step.dev] as DevEl)} ${step.dev}${step.loop ? ', loop close' : ''}`}><button className="btn pri" disabled={readOnly} onClick={() => run(e.issueStep(o.id))}>{e.live ? 'Issued on the radio' : 'Issue by radio'}</button></SayOr>}
+                      : <SayOr phrase={`Truck ${step.exec}, ${o.id} step ${o.cur + 1}: ${step.action} ${devWord(e.T.els[step.dev] as DevEl)} ${step.dev}${step.loop ? ', loop close' : ''}`}><button className="btn pri" disabled={readOnly} onClick={() => { const er = e.issueStep(o.id); run(er); if (!er && e.live) { const d = e.T.els[step.dev] as DevEl; tellUnit(e, step.exec, `${o.id} step ${o.cur + 1}: ${step.action.toUpperCase()} ${devWord(d)} ${step.dev} at ${d.loc}${step.loop ? ' (loop close)' : ''}. Repeat back.`); } }}>{e.live ? `Issue to ${who(step.exec)}` : 'Issue by radio'}</button></SayOr>}
                     {err && <div className="c-red" style={{ width: '100%', fontSize: 11 }}>{err}</div>}
                   </div>
                 ) : e.live && step.status === 'InProgress' ? (

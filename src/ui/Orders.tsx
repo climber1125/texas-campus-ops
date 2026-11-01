@@ -8,6 +8,15 @@ import { itemPos, label, type YardItem } from '../sim/campus';
 import { parseCall, normId } from '../live/parse';
 import { ACCESS } from '../live/access';
 import type { WorkOrder, WoPriority, WoStatus } from '../sim/types';
+import { tellUnit } from '../live/comms';
+
+/** Tell the assigned instructor's phone about their order. */
+export function notifyAssign(e: any, woId: string, flash?: (t: string, l?: any) => void) {
+  const wo: WorkOrder | undefined = e.s.workorders[woId];
+  if (!wo?.truck) return;
+  tellUnit(e, wo.truck, `${wo.id} assigned to you — ${wo.loc}: ${wo.issue} (${wo.priority ?? 'Routine'})`, { kind: 'assign', wo: wo.id, priority: wo.priority })
+    .then(err => { if (err && flash) flash(`Phone not notified: ${err}`, 'warn'); });
+}
 
 const PRI: WoPriority[] = ['Emergency', 'Urgent', 'Routine'];
 const STATUSES: WoStatus[] = ['Open', 'Assigned', 'In Progress', 'On Hold', 'Done', 'Canceled'];
@@ -83,8 +92,9 @@ export function WoDetail({ wo }: { wo: WorkOrder }) {
   const units = Object.values(e.s.trucks).sort((a, b) => a.crew.localeCompare(b.crew));
   const save = () => {
     if (status === 'Canceled' && wo.status !== 'Canceled' && !confirm(`Cancel ${wo.id}? It stays in the history.`)) return;
+    const prevAsg = wo.truck ?? '';
     const err = e.liveWoUpdate(wo.id, { status, priority: pri, assignee: asg, note }, ACCESS.name || 'Operator');
-    if (err) flash(err, 'warn'); else { flash(`${wo.id} updated`, 'good'); setNote(''); }
+    if (err) flash(err, 'warn'); else { flash(`${wo.id} updated`, 'good'); setNote(''); if (asg && asg !== prevAsg) notifyAssign(e, wo.id, flash); }
   };
   const item = itemById(wo.item);
   return (
@@ -151,6 +161,7 @@ export function WoForm({ onDone }: { onDone(id: string | null): void }) {
     });
     if (!r || !r.startsWith('WO-')) { flash(r ?? 'Not saved', 'warn'); return; }
     flash(`${r} created${it ? ' — ' + label(it) : ''}`, 'good');
+    if (asg) setTimeout(() => notifyAssign(e, r, flash), 300);
     setHeard(''); setItemText(''); setIssue(''); setPri('Routine'); setAsg(''); setCaller(''); setNote(''); setSource('typed');
     onDone(r);
   };

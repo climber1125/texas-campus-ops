@@ -126,7 +126,7 @@ export interface Alarm {
 
 export interface Soe { t: number; text: string; dev?: string; kind: 'trip' | 'close' | 'open' | 'alarm' | 'info' | 'reclose'; }
 
-export interface RadioMsg { id: number; t: number; from: string; to: string; text: string; kind: 'routine' | 'switching' | 'emergency' | 'system' | 'operator'; unit: string; }
+export interface RadioMsg { id: number; t: number; from: string; to: string; text: string; kind: 'routine' | 'switching' | 'emergency' | 'system' | 'operator'; unit: string; audio?: string; dur?: number; }
 
 export interface LogEntry { id: number; t: number; cat: 'SCADA' | 'OMS' | 'DISPATCH' | 'RADIO' | 'SYSTEM' | 'SAFETY' | 'SCENARIO'; level: 'info' | 'warn' | 'alarm' | 'good'; text: string; }
 

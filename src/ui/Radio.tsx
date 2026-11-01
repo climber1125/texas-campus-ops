@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCtx } from './ctx';
 import { PttBar } from './VoiceUi';
 import { ACCESS } from '../live/access';
+import { tellUnit, audioUrl, Recorder, uploadAudio, enablePush, pushState, unlockChime } from '../live/comms';
 
 export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _a, talkBack, setTalkBack, aiAvail: _ai, aiOn: _ao, setAiOn: _sa }: {
   keyed: string | null; voiceOn: boolean; setVoiceOn(v: boolean): void; audioOn: boolean; talkBack: boolean; setTalkBack(v: boolean): void; aiAvail: boolean; aiOn: boolean; setAiOn(v: boolean): void;
@@ -14,6 +15,30 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
   const [unit, setUnit] = useState('');
   const [dir, setDir] = useState<'from' | 'to'>('from');
   const [text, setText] = useState('');
+  const [vrec, setVrec] = useState<'idle' | 'rec' | 'send'>('idle');
+  const vref = useRef<Recorder | null>(null);
+  const [opAuto, setOpAuto] = useState(() => { try { return localStorage.getItem('campusOpsOpAutoPlay') !== '0'; } catch { return true; } });
+  const [alertsOn, setAlertsOn] = useState(true);
+  useEffect(() => { pushState().then(st => setAlertsOn(st === 'on' || st === 'unsupported')); }, []);
+  const voiceDown = async () => {
+    if (vrec !== 'idle' || readOnly) return;
+    unlockChime();
+    const r = new Recorder(); vref.current = r;
+    const err = await r.start();
+    if (err) { flash(err, 'warn'); vref.current = null; return; }
+    setVrec('rec');
+  };
+  const voiceUp = async () => {
+    const r = vref.current; if (!r || vrec !== 'rec') return;
+    vref.current = null; setVrec('send');
+    const clip = await r.stop();
+    if (!clip) { setVrec('idle'); flash('Too short — hold while you talk', 'warn'); return; }
+    const id = await uploadAudio(clip.blob);
+    if (!id) { setVrec('idle'); flash('Voice clip did not upload', 'warn'); return; }
+    const err = await tellUnit(e, unit, clip.text, { audio: id, dur: Math.round(clip.dur) });
+    setVrec('idle');
+    if (err) flash(err, 'warn'); else flash(`Voice sent to ${unit ? e.s.trucks[unit]?.crew ?? unit : 'all units'}`, 'good');
+  };
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const msgs = e.s.radio.slice(-200);
@@ -23,10 +48,14 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
   const trucks = Object.values(e.s.trucks).sort((a, b) => a.crew.localeCompare(b.crew));
   const F = e.s.scen.flags;
   const run = (err: string | null | undefined) => { if (err) flash(err, 'warn'); };
-  const log = () => {
-    if (!text.trim()) return;
-    run(e.liveRadio(unit, text, dir === 'to'));
+  const log = async () => {
+    const t = text.trim();
+    if (!t) return;
     setText('');
+    if (dir === 'to') {
+      const err = await tellUnit(e, unit, t);
+      if (err) { flash(err, 'warn'); setText(t); } else flash(`Sent to ${unit ? e.s.trucks[unit]?.crew ?? unit : 'all units'}`, 'good');
+    } else run(e.liveRadio(unit, t, false));
   };
   const toWo = () => {
     const t = text.trim();
@@ -41,6 +70,8 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
       <div className="ph">
         <span className="mon">M4</span><span className="ttl">Radio</span>
         <span className="sp" />
+        {!readOnly && <label className="aa" title="Play voice clips from crew phones as they arrive"><input type="checkbox" checked={opAuto} onChange={ev => { setOpAuto(ev.target.checked); try { localStorage.setItem('campusOpsOpAutoPlay', ev.target.checked ? '1' : '0'); } catch { /* none */ } }} /> Auto-play</label>}
+        {!readOnly && !alertsOn && <button className="btn sm warn" title="Lock-screen / background alerts on this computer when crew phones call" onClick={async () => { const err = await enablePush(''); if (err) flash(err, 'warn'); else { setAlertsOn(true); flash('Alerts on for this console', 'good'); } }}>🔔 Alerts</button>}
         {!readOnly && <label className="aa" title="Push-to-talk speech-to-text: repeat the call and it is typed for you">
           <input type="checkbox" checked={talkBack} onChange={ev => setTalkBack(ev.target.checked)} /> Voice capture
         </label>}
@@ -58,7 +89,7 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
           <div key={m.id} className={`tx-line ${m.kind === 'operator' ? 'ctl' : ''} ${m.kind}`}>
             <span className="tt">{e.hhmmss(m.t).slice(0, 8)}</span>
             <span className="who">{m.kind === 'operator' ? `CONTROL → ${m.to || 'ALL'}` : m.from}</span>
-            <span className="msg">{m.text}</span>
+            <span className="msg">{m.text}{m.audio && <audio className="clip" controls preload="none" src={audioUrl(m.audio)} />}</span>
           </div>
         ))}
       </div>
@@ -68,7 +99,9 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
           <textarea value={text} onChange={ev => setText(ev.target.value)} rows={2} placeholder={ptt.supported ? 'Hold Space and repeat the call, or type it here' : 'Type what was said'} style={{ flex: 1, minWidth: 180, font: 'inherit', resize: 'vertical' }}
             onKeyDown={ev => { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); log(); } }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <button className="btn sm" disabled={!text.trim()} onClick={log}>Log</button>
+            <button className="btn sm" disabled={!text.trim()} onClick={log}>{dir === 'to' ? 'Send' : 'Log'}</button>
+            {Recorder.supported() && <button className={`btn sm ${vrec === 'rec' ? 'danger on' : ''}`} title="Hold to record a voice message to the selected instructor (or all units)" disabled={vrec === 'send'}
+              onPointerDown={ev => { ev.preventDefault(); try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch { /* none */ } voiceDown(); }} onPointerUp={() => voiceUp()} onPointerCancel={() => voiceUp()}>{vrec === 'rec' ? '● Recording' : vrec === 'send' ? 'Sending…' : '🎙 Voice'}</button>}
             <button className="btn pri sm" disabled={!text.trim()} onClick={toWo}>→ Work order</button>
           </div>
         </div>
@@ -82,7 +115,7 @@ export function RadioPanel({ keyed: _k, voiceOn: _v, setVoiceOn: _sv, audioOn: _
         {trucks.map(t => <button key={t.id} className={`btn sm ${unit === t.id ? 'on' : ''}`} onClick={() => setUnit(unit === t.id ? '' : t.id)}>{t.crew.split(' ')[0]}</button>)}
         {!trucks.length && <span className="dim" style={{ fontSize: 10 }}>Add instructors on the M5 Roster tab.</span>}
         <span style={{ flex: 1 }} />
-        <span className="dim" style={{ fontSize: 10 }}>{ACCESS.role === 'staff' ? 'view only' : unit ? (dir === 'from' ? `from ${e.s.trucks[unit]?.crew}` : `to ${e.s.trucks[unit]?.crew}`) : 'pick who'}</span>
+        <span className="dim" style={{ fontSize: 10 }}>{ACCESS.role === 'staff' ? 'view only' : dir === 'to' ? `to ${unit ? e.s.trucks[unit]?.crew : 'ALL units'} · phones` : unit ? `from ${e.s.trucks[unit]?.crew}` : 'pick who'}</span>
       </div>
     </div>
   );

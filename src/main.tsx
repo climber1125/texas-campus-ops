@@ -3,8 +3,18 @@ import ReactDOM from 'react-dom/client';
 import './ui/styles.css';
 import { ACCESS, setKey, whoami, type Access } from './live/access';
 import { boot } from './live/boot';
+import { registerSW } from './live/comms';
 
-type Phase = { k: 'check' } | { k: 'login'; msg?: string } | { k: 'loading' } | { k: 'ready'; App: React.ComponentType } | { k: 'error'; msg: string };
+const VIEW_KEY = 'campusOpsView';
+function crewView(): boolean {
+  const q = new URLSearchParams(location.search).get('mode');
+  if (q === 'crew') return true;
+  if (q === 'board' || new URLSearchParams(location.search).get('mon')) return false;
+  try { const v = localStorage.getItem(VIEW_KEY); if (v) return v === 'crew'; } catch { /* none */ }
+  return window.innerWidth < 900;
+}
+
+type Phase = { k: 'check' } | { k: 'login'; msg?: string } | { k: 'loading' } | { k: 'ready'; App: React.ComponentType } | { k: 'crew'; Crew: React.ComponentType<{ onFullBoard(): void }>; App: React.ComponentType } | { k: 'error'; msg: string };
 
 function Gate() {
   const [ph, setPh] = useState<Phase>({ k: 'check' });
@@ -14,8 +24,10 @@ function Gate() {
     setPh({ k: 'loading' });
     try {
       await boot();
+      registerSW();
       const mod = await import('./ui/App');
-      setPh({ k: 'ready', App: mod.default });
+      if (role === 'staff' && crewView()) { const c = await import('./ui/CrewApp'); setPh({ k: 'crew', Crew: c.default, App: mod.default }); }
+      else setPh({ k: 'ready', App: mod.default });
     } catch (err) { setPh({ k: 'error', msg: String(err) }); }
   };
   const check = async () => {
@@ -32,6 +44,7 @@ function Gate() {
   useEffect(() => { check(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (ph.k === 'ready') return <ph.App />;
+  if (ph.k === 'crew') { const App = ph.App; return <ph.Crew onFullBoard={() => { try { localStorage.setItem(VIEW_KEY, 'board'); } catch { /* none */ } setPh({ k: 'ready', App }); }} />; }
   return (
     <div className="gate">
       <div className="gate-box">

@@ -8,7 +8,8 @@ import { sectionAround } from '../sim/network';
 import { devWord } from '../sim/radio';
 import { SUB_SPECS, CAMPUS } from '../sim/topology';
 import { itemPos, label } from '../sim/campus';
-import { itemById, WoDetail, woOpen } from './Orders';
+import { itemById, WoDetail, woOpen, notifyAssign } from './Orders';
+import { tellUnit } from '../live/comms';
 
 const STATUSES: CrewStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Working', 'Standing By', 'Off Duty'];
 
@@ -67,7 +68,7 @@ function ClearanceBox({ elId }: { elId: string }) {
       <div className="form-row" style={{ marginTop: 4 }}>
         <select value={unit} onChange={ev => setUnit(ev.target.value)}><option value="">— issue to —</option>{units.map(u => <option key={u.id} value={u.id}>{u.crew}</option>)}</select>
         <input placeholder="purpose" value={why} onChange={ev => setWhy(ev.target.value)} style={{ flex: 1, minWidth: 90 }} />
-        <button className="btn warn" disabled={!unit} onClick={() => { const err = e.liveClearance(unit, elId, why); if (err) flash(err, 'warn'); else { flash('Clearance issued — HOLD tags applied', 'good'); setUnit(''); setWhy(''); } }}>Issue</button>
+        <button className="btn warn" disabled={!unit} onClick={() => { const err = e.liveClearance(unit, elId, why); if (err) flash(err, 'warn'); else { flash('Clearance issued — HOLD tags applied', 'good'); const cl = e.s.trucks[unit]?.clearance; if (cl) tellUnit(e, unit, `Clearance ${cl} issued to you — HOLD tags on ${sec.bounds.join(', ')}. ${why || ''}`.trim()); setUnit(''); setWhy(''); } }}>Issue</button>
       </div>
     </>
   );
@@ -234,7 +235,7 @@ export function TruckView({ id }: { id: string }) {
             <option value="">— select —</option>
             {openWos.map(w => <option key={w.id} value={w.id}>{w.priority?.slice(0, 3).toUpperCase()} {w.id} {w.loc}</option>)}
           </select>
-          <button className="btn pri" disabled={!wo} onClick={() => { run(e.liveWoUpdate(wo, { assignee: id })); setWo(''); }}>Assign</button>
+          <button className="btn pri" disabled={!wo} onClick={() => { const err = e.liveWoUpdate(wo, { assignee: id }); run(err); if (!err) notifyAssign(e, wo, flash); setWo(''); }}>Assign</button>
         </div>
       </>}
       <div className="acts"><button className="btn" onClick={() => flyTo(tr.pos, 20)}>Zoom</button></div>

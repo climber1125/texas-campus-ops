@@ -478,3 +478,44 @@ table.grid td.num { text-align: right; font-family: var(--mono); }
 .ne-it.loose { border-color: #e3a53c; box-shadow: 0 0 0 2px #e3a53c; }
 .ne-it.src { width: 16px; height: 16px; border-color: #3fb6d3; box-shadow: 0 0 0 3px #3fb6d3; }
 .ne-it.anchor { width: 14px; height: 14px; border-color: #fff; box-shadow: 0 0 0 3px #fff; }
+
+/* ── Crew phone ───────────────────────────────────────────── */
+.crew { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg0); padding-bottom: env(safe-area-inset-bottom); }
+.crew-top { display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; border-bottom: 1px solid var(--line); background: var(--bg1); }
+.crew-name { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crew-tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--bg1); }
+.crew-tabs button { flex: 1; padding: 11px 0; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text2); font: 600 13px var(--sans); letter-spacing: .04em; text-transform: uppercase; display: flex; gap: 6px; justify-content: center; align-items: center; }
+.crew-tabs button.on { color: var(--cyan); border-bottom-color: var(--cyan); }
+.crew-body { flex: 1; overflow: auto; padding: 10px 12px 20px; -webkit-overflow-scrolling: touch; }
+.crew-h { font-size: 15px; margin: 6px 0 10px; }
+.crew-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 13px 14px; margin-bottom: 8px; background: var(--bg2); border: 1px solid var(--line2); color: var(--text); font-size: 15px; text-align: left; }
+.crew-wo { background: var(--bg1); border: 1px solid var(--line2); border-left: 4px solid var(--cyan2); padding: 10px 12px; margin-bottom: 10px; }
+.crew-wo.pri-b-Emergency { border-left-color: var(--red); } .crew-wo.pri-b-Urgent { border-left-color: var(--amber); }
+.crew-wo-h { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.crew-wo-loc { font: 700 17px var(--mono); margin-top: 4px; }
+.crew-wo-iss { font-size: 14px; margin: 3px 0 4px; }
+.crew-taps { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin-top: 8px; }
+.crew-taps .btn { padding: 10px 4px; font-size: 13px; }
+.crew-mini { font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.crew-chan { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.crew-msgs { flex: 1; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; -webkit-overflow-scrolling: touch; }
+.crew-msg { max-width: 86%; padding: 7px 10px; border: 1px solid var(--line2); background: var(--bg2); }
+.crew-msg.out { align-self: flex-end; background: #10303a; border-color: var(--cyan2); }
+.crew-msg.in { align-self: flex-start; }
+.crew-msg.emergency { border-color: var(--red); background: #2a1010; }
+.crew-msg.assign { border-color: var(--amber); }
+.crew-msg .who { font: 600 10.5px var(--mono); color: var(--text2); margin-bottom: 3px; }
+.crew-msg .txt { font-size: 14px; white-space: pre-wrap; }
+.crew-msg audio { width: 220px; max-width: 100%; height: 34px; }
+.crew-quick { display: flex; gap: 6px; padding: 6px 12px; flex-wrap: wrap; border-top: 1px solid var(--line); align-items: center; }
+.crew-interim { padding: 4px 12px; font-size: 13px; color: var(--amber); }
+.crew-ptt { margin: 6px 12px; padding: 22px 0; font: 800 18px var(--mono); letter-spacing: .08em; border: 2px solid var(--red); background: #1c0d0d; color: #ffb0b0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.crew-ptt.rec { background: var(--red); color: #fff; animation: pulse 1s infinite; }
+.crew-ptt.send { opacity: .7; }
+.crew-type { display: flex; gap: 6px; padding: 0 12px 10px; }
+.crew-type input { flex: 1; font-size: 16px; padding: 9px 10px; }
+.crew-toast { position: fixed; left: 12px; right: 12px; bottom: calc(18px + env(safe-area-inset-bottom)); background: #10262f; border: 1px solid var(--cyan2); color: #bfeaf5; padding: 10px 12px; font-size: 13px; z-index: 50; }
+.crew-toast.bad { background: #2a1414; border-color: #7a3030; color: #ffc2c2; }
+.warnbox.info { background: #10262f; border-color: var(--cyan2); color: #bfeaf5; }
+.tx-line .clip { margin-left: 6px; }
+.tx-line audio { height: 26px; width: 180px; vertical-align: middle; }

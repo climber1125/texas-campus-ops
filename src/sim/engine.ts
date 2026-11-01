@@ -1957,11 +1957,43 @@ export class Engine {
     this.bump(); return null;
   }
 
+  /** A message from a crew phone (channel). Logged on the radio and applied to the board. */
+  liveIncoming(m: { id: string; ts: number; from: string; fromName?: string; to: string; text?: string; audio?: string; dur?: number; kind: string; wo?: string; status?: string }): string | null {
+    const F = this.s.scen.flags;
+    if (F.lastMsgTs && m.ts <= F.lastMsgTs && (F.seenMsg ?? []).includes(m.id)) return null;
+    F.lastMsgTs = Math.max(F.lastMsgTs ?? 0, m.ts);
+    F.seenMsg = [...(F.seenMsg ?? []), m.id].slice(-60);
+    const tr = this.s.trucks[m.from];
+    const who = tr?.crew ?? m.fromName ?? m.from;
+    const text = (m.text || '').trim() || (m.audio ? '(voice message)' : '');
+    this.s.radio.push({ id: ++this.s.seq, t: this.s.t, from: who.toUpperCase(), to: m.to === 'CONTROL' ? CONTROL : m.to, text, kind: m.kind === 'emergency' ? 'emergency' : 'routine', unit: m.from, audio: m.audio, dur: m.dur });
+    if (this.s.radio.length > 400) this.s.radio.splice(0, this.s.radio.length - 400);
+    if (m.kind === 'emergency') {
+      this.alarm(`emg:${m.id}`, `EMERGENCY from ${who}: ${text}`, 1);
+      this.log('SAFETY', 'alarm', `EMERGENCY call from ${who}: ${text}`);
+    }
+    if (m.kind === 'status' && m.status) {
+      const wo = m.wo ? this.s.workorders[m.wo] : undefined;
+      const by = who;
+      const unitSt: Record<string, CrewStatus> = { enroute: 'En Route', onscene: 'On Scene', working: 'Working', available: 'Available', offduty: 'Off Duty' };
+      if (tr && wo && (m.status === 'enroute' || m.status === 'onscene' || m.status === 'working') && wo.truck !== tr.id) this.liveWoUpdate(wo.id, { assignee: tr.id }, by);
+      if (tr && unitSt[m.status]) { const err = this.liveUnitStatus(tr.id, unitSt[m.status]); if (err) this.log('DISPATCH', 'warn', `${who}: ${err}`); }
+      if (wo) {
+        if (m.status === 'ack') { this.woLog(wo, by, 'Acknowledged'); this.log('DISPATCH', 'info', `${wo.id} acknowledged by ${who}`); }
+        if (m.status === 'working' && wo.status !== 'In Progress') this.liveWoUpdate(wo.id, { status: 'In Progress' }, by);
+        if (m.status === 'enroute' || m.status === 'onscene') this.woLog(wo, by, m.status === 'enroute' ? 'En route' : 'On scene');
+        if (m.status === 'complete') this.liveWoUpdate(wo.id, { status: 'Done', note: 'Reported complete from the field' }, by);
+      }
+    } else if (m.kind !== 'emergency') this.log('RADIO', 'info', `${who}: ${text}`);
+    this.bump();
+    return null;
+  }
+
   /** Log a radio transmission (what the operator heard or said on the real radio). */
-  liveRadio(unit: string, text: string, fromControl: boolean): string | null {
-    const t = (text || '').trim();
+  liveRadio(unit: string, text: string, fromControl: boolean, audio?: string, dur?: number): string | null {
+    const t = (text || '').trim() || (audio ? '(voice message)' : '');
     if (!t) return null;
-    this.s.radio.push({ id: ++this.s.seq, t: this.s.t, from: fromControl ? CONTROL : (unit ? this.unitName(unit).toUpperCase() : 'FIELD'), to: fromControl ? (unit ? this.unitName(unit).toUpperCase() : 'ALL') : CONTROL, text: t, kind: fromControl ? 'operator' : 'routine', unit });
+    this.s.radio.push({ id: ++this.s.seq, t: this.s.t, from: fromControl ? CONTROL : (unit ? this.unitName(unit).toUpperCase() : 'FIELD'), to: fromControl ? (unit ? this.unitName(unit).toUpperCase() : 'ALL') : CONTROL, text: t, kind: fromControl ? 'operator' : 'routine', unit, audio, dur });
     if (this.s.radio.length > 400) this.s.radio.splice(0, this.s.radio.length - 400);
     this.bump(); return null;
   }
