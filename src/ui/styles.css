@@ -519,3 +519,18 @@ table.grid td.num { text-align: right; font-family: var(--mono); }
 .warnbox.info { background: #10262f; border-color: var(--cyan2); color: #bfeaf5; }
 .tx-line .clip { margin-left: 6px; }
 .tx-line audio { height: 26px; width: 180px; vertical-align: middle; }
+
+/* ---- yard areas ---- */
+.neted .map.areamode .leaflet-marker-icon { pointer-events: none !important; }
+.leaflet-tooltip.area-tip { background: rgba(8, 14, 20, 0.72); border: 0; box-shadow: none; color: #e6eef5; font: 600 10.5px/1.2 var(--mono, monospace); padding: 2px 5px; white-space: nowrap; text-align: center; }
+.leaflet-tooltip.area-tip::before { display: none; }
+.area-tip .crew { display: block; font-weight: 400; color: #9fe3f3; font-size: 10px; }
+.area-row { display: flex; align-items: center; gap: 4px; padding: 3px 2px; border-radius: 3px; margin-top: 4px; }
+.area-row.sel { background: rgba(63, 182, 211, 0.12); }
+.area-row input[type=color] { width: 20px; height: 20px; padding: 0; border: 0; background: none; cursor: pointer; flex: none; }
+.area-row .area-name { flex: 1; min-width: 90px; }
+.area-chip { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 8px; border: 1px solid currentColor; line-height: 15px; white-space: nowrap; }
+.area-lbl { position: relative; text-align: center; pointer-events: none; white-space: nowrap; padding: 1px 6px 2px; background: rgba(8, 14, 20, 0.78); border-left: 3px solid var(--ac, #3fb6d3); border-radius: 2px; margin-top: -3px; }
+.area-lbl b { display: block; font: 700 10.5px/1.25 var(--mono, monospace); color: var(--ac, #3fb6d3); letter-spacing: 0.3px; }
+.area-lbl span { display: block; font: 10px/1.2 var(--sans, sans-serif); color: #e6eef5; }
+.area-lbl.empty span { color: #8696a7; font-style: italic; }

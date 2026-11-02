@@ -2,6 +2,25 @@
 import { useState } from 'react';
 import { useCtx, age } from './ctx';
 import type { Engine } from '../sim/engine';
+import { areas } from '../sim/campus';
+import { tellUnit } from '../live/comms';
+/** Set someone's area and tell their phone. */
+export function assignArea(e: Engine, id: string, areaId: string, flash: (t: string, l?: any) => void) {
+  const err = e.liveUnitArea(id, areaId);
+  if (err) { flash(err, 'warn'); return; }
+  const n = areaName(areaId);
+  tellUnit(e, id, n ? `You're assigned to ${n}` : 'Area assignment cleared').then(x => { if (x) flash(`Phone not notified: ${x}`, 'warn'); });
+}
+export const areaName = (id?: string) => (id ? areas().find(a => a.id === id)?.name ?? '' : '');
+function AreaPick({ id, area, disabled }: { id: string; area?: string; disabled?: boolean }) {
+  const { e, flash } = useCtx();
+  const list = areas();
+  if (disabled) return <span>{areaName(area) || <span className="dim">—</span>}</span>;
+  return <select value={area ?? ''} onChange={ev => assignArea(e, id, ev.target.value, flash)} title={list.length ? 'Yard area this person covers' : 'Draw areas first: Edit network → Areas'}>
+    <option value="">{list.length ? '— none —' : 'no areas yet'}</option>
+    {list.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+  </select>;
+}
 const RANK: Record<string, number> = { Emergency: 0, Urgent: 1, Routine: 2 };
 
 // ── Roster preferences (persist your own trucks across scenarios) ──
@@ -56,13 +75,14 @@ export function RosterPanel() {
         <button className="btn pri" disabled={!name.trim()} onClick={add}>Add to board</button>
       </div>}
       <table className="grid" style={{ marginTop: 4 }}>
-        <thead><tr><th>Call</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Call</th><th>Name</th><th>Role</th><th>Area</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {units.map(t => edit === t.id ? (
             <tr key={t.id}>
               <td className="mono"><b>{t.id}</b></td>
               <td><input value={eName} onChange={ev => setEName(ev.target.value)} style={{ width: '100%' }} /></td>
               <td><select value={eRole} onChange={ev => setERole(ev.target.value)}>{[...new Set([eRole, ...ROLES])].map(x => <option key={x}>{x}</option>)}</select></td>
+              <td />
               <td />
               <td><button className="btn good sm" onClick={() => { e.rosterEdit(t.id, eName, eRole); setEdit(null); }}>Save</button> <button className="btn sm" onClick={() => setEdit(null)}>Cancel</button></td>
             </tr>
@@ -71,14 +91,29 @@ export function RosterPanel() {
               <td className="mono"><b>{t.id}</b></td>
               <td>{t.crew}</td>
               <td className="dim">{t.type}</td>
+              <td><AreaPick id={t.id} area={t.area} disabled={readOnly} /></td>
               <td><span className={`chip ${t.status.replace(/\s+/g, '')}`}>{t.status}</span></td>
               <td>{!readOnly && <><button className="btn sm" onClick={() => { setEdit(t.id); setEName(t.crew); setERole(t.type); }}>Edit</button> <button className="btn danger sm" onClick={() => remove(t.id)}>Remove</button></>}</td>
             </tr>
           ))}
-          {!units.length && <tr><td colSpan={5} className="empty">No one on the board yet. Add the instructors and staff working today.</td></tr>}
+          {!units.length && <tr><td colSpan={6} className="empty">No one on the board yet. Add the instructors and staff working today.</td></tr>}
         </tbody>
       </table>
-      <div className="dim" style={{ fontSize: 10.5, marginTop: 6 }}>The board is shared — everyone signed in sees it. Anyone holding a clearance or mid-switching can't be removed until they're clear.</div>
+      {areas().length > 0 && <>
+        <div className="sec-t" style={{ marginTop: 10 }}>Yard areas</div>
+        <table className="grid">
+          <thead><tr><th>Area</th><th>Instructor(s)</th><th>Open orders</th></tr></thead>
+          <tbody>
+            {areas().map(a => { const who = units.filter(t => t.area === a.id); const n = Object.values(e.s.workorders).filter(w => w.area === a.id && !['Done', 'Canceled'].includes(w.status)).length; return (
+              <tr key={a.id}>
+                <td><span className="area-chip" style={{ color: a.color || '#3fb6d3' }}>{a.name}</span></td>
+                <td>{who.length ? who.map(t => t.crew).join(', ') : <span className="c-amber">nobody assigned</span>}</td>
+                <td className="mono">{n || <span className="dim">0</span>}</td>
+              </tr>); })}
+          </tbody>
+        </table>
+      </>}
+      <div className="dim" style={{ fontSize: 10.5, marginTop: 6 }}>Pick each person's area in the Area column (draw and name areas under Edit network → Areas). The board is shared — everyone signed in sees it. Anyone holding a clearance or mid-switching can't be removed until they're clear.</div>
     </div>
   );
 }
@@ -170,7 +205,7 @@ export function StatusWall() {
             <div key={w.id} className={`wrow ${w.priority === 'Emergency' ? 'p1' : w.priority === 'Urgent' ? 'p2' : 'p3'}`}>
               <span className={`badge ${w.priority === 'Emergency' ? 'p1' : w.priority === 'Urgent' ? 'p2' : 'p3'}`}>{(w.priority ?? 'Routine').slice(0, 3).toUpperCase()}</span>
               <span className="mono">{w.id}</span>
-              <span className="grow">{w.loc} · {w.issue}</span>
+              <span className="grow">{w.area ? <b>{areaName(w.area)} · </b> : ''}{w.loc} · {w.issue}</span>
               <span className="mono">{w.truck ? (s.trucks[w.truck]?.crew.split(' ')[0] ?? w.truck) : <span className="c-amber">—</span>}</span>
               <span className="mono dim">{w.status} · {age(s.t - (w.createdT ?? s.t))}</span>
             </div>
@@ -184,7 +219,7 @@ export function StatusWall() {
               <span className="mono"><b>{t.crew}</b></span>
               <span className={`chip ${t.status.replace(/\s+/g, '')}`}>{t.status}</span>
               <span className="grow">{t.task?.kind === 'workorder' ? `${t.task.id} · ${s.workorders[t.task.id]?.loc ?? ''}` : ''}{t.sw ? ` · ${t.sw.order}` : ''}{t.clearance ? ` · ${t.clearance}` : ''}</span>
-              <span className="dim">{e.locOf(t.pos)}</span>
+              <span className="dim">{areaName(t.area) || e.locOf(t.pos)}</span>
             </div>
           ))}
         </div>

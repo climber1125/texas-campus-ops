@@ -4,7 +4,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useCtx, age } from './ctx';
 import { CAMPUS } from '../sim/topology';
-import { itemPos, label, type YardItem } from '../sim/campus';
+import { itemPos, label, areaAt, type YardItem } from '../sim/campus';
+import { areaName } from './Fleet';
+
+/** Who covers this spot: instructors assigned to the area it falls in, Available first. */
+export function areaCrew(e: any, pos: [number, number] | null | undefined) {
+  const a = pos ? areaAt(pos) : null;
+  if (!a) return { area: null, crew: [] as any[] };
+  const rank: Record<string, number> = { Available: 0, 'En Route': 1, 'On Scene': 2, Working: 2 };
+  const crew = Object.values(e.s.trucks as Record<string, any>).filter(t => t.area === a.id && t.status !== 'Off Duty').sort((x, y) => (rank[x.status] ?? 3) - (rank[y.status] ?? 3));
+  return { area: a, crew };
+}
 import { parseCall, normId } from '../live/parse';
 import { ACCESS } from '../live/access';
 import type { WorkOrder, WoPriority, WoStatus } from '../sim/types';
@@ -64,7 +74,7 @@ export function OrdersPanel() {
                     <tr key={w.id} className={`row ${selWo?.id === w.id ? 'sel' : ''}`} onClick={() => { setSel({ kind: 'wo', id: w.id }); flyTo(w.pos, 19); }}>
                       <td><span className={`badge ${priCls(w.priority)}`}>{(w.priority ?? 'Routine').slice(0, 3).toUpperCase()}</span></td>
                       <td className="mono">{w.id}</td>
-                      <td className="mono">{w.loc}</td>
+                      <td className="mono">{w.loc}{w.area && <div className="dim" style={{ fontSize: 10 }}>{areaName(w.area)}</div>}</td>
                       <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.issue}</td>
                       <td>{w.status}</td>
                       <td className="mono">{w.truck ? (e.s.trucks[w.truck]?.crew ?? w.truck) : <span className="c-amber">—</span>}</td>
@@ -107,12 +117,12 @@ export function WoDetail({ wo }: { wo: WorkOrder }) {
         <button className="btn sm" onClick={() => setSel(null)}>✕</button>
       </div>
       <div style={{ fontSize: 12.5, margin: '4px 0' }}>{wo.issue}</div>
-      <div className="dim" style={{ fontSize: 10.5 }}>{wo.loc} · opened {e.hhmm(wo.createdT ?? 0)} by {wo.createdBy}{wo.caller ? ` · called in by ${wo.caller}` : ''}</div>
+      <div className="dim" style={{ fontSize: 10.5 }}>{wo.loc}{wo.area ? ` · ${areaName(wo.area)}` : ''} · opened {e.hhmm(wo.createdT ?? 0)} by {wo.createdBy}{wo.caller ? ` · called in by ${wo.caller}` : ''}</div>
       {!readOnly && (
         <div className="form-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
           <select value={status} onChange={ev => setStatus(ev.target.value as WoStatus)}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select>
           <select value={pri} onChange={ev => setPri(ev.target.value as WoPriority)}>{PRI.map(s => <option key={s}>{s}</option>)}</select>
-          <select value={asg} onChange={ev => setAsg(ev.target.value)}><option value="">— unassigned —</option>{units.map(u => <option key={u.id} value={u.id}>{u.crew} · {u.status}</option>)}</select>
+          <select value={asg} onChange={ev => setAsg(ev.target.value)}><option value="">— unassigned —</option>{units.map(u => <option key={u.id} value={u.id}>{u.crew} · {u.status}{u.area ? ` · ${areaName(u.area)}` : ''}</option>)}</select>
           <input placeholder="note (optional)" value={note} onChange={ev => setNote(ev.target.value)} style={{ flex: 1, minWidth: 120 }} />
           <button className="btn pri" onClick={save}>Save</button>
         </div>
@@ -134,11 +144,16 @@ export function WoForm({ onDone }: { onDone(id: string | null): void }) {
   const [caller, setCaller] = useState('');
   const [note, setNote] = useState('');
   const [source, setSource] = useState<'radio' | 'typed'>('typed');
+  const [asgSet, setAsgSet] = useState(false); // operator (or the call) picked someone — don't auto-suggest over it
+  const curItem = itemText.trim() ? itemByLabel(itemText) : undefined;
+  const cover = areaCrew(e, curItem ? itemPos(curItem) as [number, number] : null);
+  const coverKey = (cover.area?.id ?? '') + ':' + cover.crew.map(t => t.id).join();
+  useEffect(() => { if (!asgSet && cover.crew.length) setAsg(cover.crew[0].id); else if (!asgSet) setAsg(''); }, [coverKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const fill = (text: string) => {
     const r = parseCall(text, items, units.map(u => ({ id: u.id, crew: u.crew })));
     if (r.itemText) setItemText(r.item ? label(r.item) : r.itemText);
     setIssue(r.issue); setPri(r.priority);
-    if (r.assignee) setAsg(r.assignee);
+    if (r.assignee) { setAsg(r.assignee); setAsgSet(true); }
     if (r.caller) setCaller(r.caller);
     setNote(r.notes.join(' '));
     setSource('radio');
@@ -147,7 +162,7 @@ export function WoForm({ onDone }: { onDone(id: string | null): void }) {
     if (!woDraft) return;
     setHeard(woDraft.text ?? '');
     const it = itemById(woDraft.item);
-    setItemText(it ? label(it) : ''); setIssue(''); setPri(woDraft.priority ?? 'Routine'); setAsg(woDraft.assignee ?? ''); setCaller(woDraft.caller ?? ''); setNote(''); setSource(woDraft.source ?? 'typed');
+    setItemText(it ? label(it) : ''); setIssue(''); setPri(woDraft.priority ?? 'Routine'); setAsg(woDraft.assignee ?? ''); setAsgSet(!!woDraft.assignee); setCaller(woDraft.caller ?? ''); setNote(''); setSource(woDraft.source ?? 'typed');
     if (woDraft.text) fill(woDraft.text);
     if (woDraft.item && woDraft.text) setItemText(it ? label(it) : '');
   }, [woDraft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -162,7 +177,7 @@ export function WoForm({ onDone }: { onDone(id: string | null): void }) {
     if (!r || !r.startsWith('WO-')) { flash(r ?? 'Not saved', 'warn'); return; }
     flash(`${r} created${it ? ' — ' + label(it) : ''}`, 'good');
     if (asg) setTimeout(() => notifyAssign(e, r, flash), 300);
-    setHeard(''); setItemText(''); setIssue(''); setPri('Routine'); setAsg(''); setCaller(''); setNote(''); setSource('typed');
+    setHeard(''); setItemText(''); setIssue(''); setPri('Routine'); setAsg(''); setAsgSet(false); setCaller(''); setNote(''); setSource('typed');
     onDone(r);
   };
   return (
@@ -187,7 +202,8 @@ export function WoForm({ onDone }: { onDone(id: string | null): void }) {
           <div className="form-row">{PRI.map(p => <button key={p} className={`btn sm ${pri === p ? (p === 'Emergency' ? 'danger on' : p === 'Urgent' ? 'warn on' : 'on') : ''}`} onClick={() => setPri(p)}>{p}</button>)}</div>
         </div>
         <div><label>Assign to</label>
-          <select value={asg} onChange={ev => setAsg(ev.target.value)}><option value="">— unassigned —</option>{units.map(u => <option key={u.id} value={u.id}>{u.crew} · {u.status}</option>)}</select>
+          <select value={asg} onChange={ev => { setAsg(ev.target.value); setAsgSet(true); }}><option value="">— unassigned —</option>{units.map(u => <option key={u.id} value={u.id}>{u.crew} · {u.status}{u.area ? ` · ${areaName(u.area)}` : ''}</option>)}</select>
+          {cover.area && <div className="dim" style={{ fontSize: 10.5, marginTop: 2 }}>Area <b style={{ color: cover.area.color || 'var(--cyan)' }}>{cover.area.name}</b> · {cover.crew.length ? cover.crew.map(t => t.crew).join(', ') : <span className="c-amber">nobody assigned</span>}</div>}
         </div>
       </div>
       <div className="form-row" style={{ marginTop: 8 }}>
@@ -204,7 +220,7 @@ export function WoForm({ onDone }: { onDone(id: string | null): void }) {
 export function printWo(e: any, wo: WorkOrder) {
   const esc = (s: string) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
   const asg = wo.truck ? (e.s.trucks[wo.truck]?.crew ?? wo.truck) : '—';
-  const rows: [string, string][] = [['Work Order', wo.id], ['Pole / Item', wo.loc], ['Priority', wo.priority ?? 'Routine'], ['Status', wo.status], ['Assigned To', asg], ['Called In By', wo.caller || '—'], ['Opened', `${e.hhmm(wo.createdT ?? 0)} ${e.clock(wo.createdT ?? 0).toLocaleDateString()} by ${wo.createdBy}`], ['GPS', `${wo.pos[0].toFixed(6)}, ${wo.pos[1].toFixed(6)}`]];
+  const rows: [string, string][] = [['Work Order', wo.id], ['Pole / Item', wo.loc], ['Area', areaName(wo.area) || '—'], ['Priority', wo.priority ?? 'Routine'], ['Status', wo.status], ['Assigned To', asg], ['Called In By', wo.caller || '—'], ['Opened', `${e.hhmm(wo.createdT ?? 0)} ${e.clock(wo.createdT ?? 0).toLocaleDateString()} by ${wo.createdBy}`], ['GPS', `${wo.pos[0].toFixed(6)}, ${wo.pos[1].toFixed(6)}`]];
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(wo.id)}</title><style>body{font-family:Arial,sans-serif;margin:28px;color:#111}h1{margin:0 0 4px;font-size:22px}.sub{color:#555;font-size:12px;margin-bottom:16px}table{width:100%;border-collapse:collapse;margin-bottom:16px}td{border:1px solid #999;padding:8px;font-size:14px}td:first-child{width:28%;font-weight:bold;background:#f2f2f2}.box{border:1px solid #999;padding:10px;min-height:60px;font-size:14px;white-space:pre-wrap;margin-bottom:16px}h3{font-size:14px;margin:12px 0 6px}.h div{font-size:12px;margin-bottom:4px}</style></head><body>
 <h1>NLC Campus Ops — Work Order</h1><div class="sub">Printed ${esc(new Date().toLocaleString())}</div>
 <table>${rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join('')}</table>

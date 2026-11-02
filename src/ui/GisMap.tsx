@@ -7,7 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import { useCtx, type Sel } from './ctx';
 import { ROADS, ZONES, CREEK, localStreets } from '../sim/roads';
 import { SUB_SPECS, CAMPUS } from '../sim/topology';
-import { itemPos, label } from '../sim/campus';
+import { itemPos, label, areas } from '../sim/campus';
 import type { DevEl, LineEl, LatLng } from '../sim/types';
 import type { Engine } from '../sim/engine';
 
@@ -24,9 +24,10 @@ interface Layers {
   calls: L.LayerGroup; incidents: L.LayerGroup; faults: L.LayerGroup; crit: Map<string, L.Marker>;
   selRing: L.CircleMarker; osm: L.TileLayer;
   poles: Map<string, L.Marker>; poleGroup: L.LayerGroup; poleLabels: L.LayerGroup; wos: L.LayerGroup;
+  areaGroup: L.LayerGroup; areaLabels: Map<string, L.Marker>;
 }
 
-export interface Toggles { feeders: boolean; devices: boolean; xfmrs: boolean; calls: boolean; trucks: boolean; labels: boolean; osm: boolean; }
+export interface Toggles { feeders: boolean; devices: boolean; xfmrs: boolean; calls: boolean; trucks: boolean; labels: boolean; osm: boolean; areas?: boolean; }
 
 export function GisMap({ visible, apiRef }: { visible: boolean; apiRef: React.MutableRefObject<{ flyTo(p: LatLng, z?: number): void } | null> }) {
   const ctx = useCtx();
@@ -40,7 +41,7 @@ export function GisMap({ visible, apiRef }: { visible: boolean; apiRef: React.Mu
   const [tg, setTg] = useState<Toggles>(() => { try { const v = JSON.parse(localStorage.getItem('campusOpsMapTg') || 'null'); if (v) return v; } catch { /* none */ } return { feeders: true, devices: true, xfmrs: true, calls: true, trucks: true, labels: true, osm: true }; });
   useEffect(() => { try { localStorage.setItem('campusOpsMapTg', JSON.stringify(tg)); } catch { /* none */ } }, [tg]);
   const tgRef = useRef(tg); tgRef.current = tg;
-  const last = useRef({ netVer: -1, incKey: '', callKey: '', faultKey: '', tagKey: '', e: null as Engine | null, sel: '', woKey: '' });
+  const last = useRef({ areaKey: '', netVer: -1, incKey: '', callKey: '', faultKey: '', tagKey: '', e: null as Engine | null, sel: '', woKey: '' });
 
   useEffect(() => {
     const T = eRef.current.T;
@@ -143,10 +144,21 @@ export function GisMap({ visible, apiRef }: { visible: boolean; apiRef: React.Mu
     }
 
     const truckGroup = L.layerGroup().addTo(map);
+    // Yard areas (named sections; instructors are assigned to them)
+    mkPane('area', 400, true);
+    const rArea = L.canvas({ pane: 'area', padding: 0.5 });
+    const areaGroup = L.layerGroup().addTo(map), areaLabels = new Map<string, L.Marker>();
+    for (const a of areas()) {
+      const c = a.color || '#3fb6d3';
+      L.polygon(a.poly, { renderer: rArea, color: c, weight: 1.5, opacity: 0.9, fillColor: c, fillOpacity: 0.1, dashArray: '5 4', interactive: false }).addTo(areaGroup);
+      const top = Math.max(...a.poly.map(p => p[0])), west = Math.min(...a.poly.map(p => p[1]));
+      const m = L.marker([top, west], { pane: 'lbl', interactive: false, icon: L.divIcon({ className: '', html: `<div class="area-lbl" style="transform:translate(0,-100%);--ac:${c}"><b></b><span></span></div>`, iconSize: [0, 0] }) });
+      m.addTo(areaGroup); areaLabels.set(a.id, m);
+    }
     const calls = L.layerGroup().addTo(map), incidents = L.layerGroup().addTo(map), faults = L.layerGroup().addTo(map), tags = L.layerGroup().addTo(map);
     const selRing = L.circleMarker([0, 0], { pane: 'selp', radius: 13, color: '#3fb6d3', weight: 2, dashArray: '4 3', fill: false, interactive: false });
 
-    lyr.current = { lines, devs, xfmrs, xfmrGroup, devGroup, fuseGroup, lineGroup, devLabels, fuseLabels, roadLabels, zoneLabels, tags, trucks: new Map(), truckGroup, routes: new Map(), calls, incidents, faults, crit, selRing, osm, poles, poleGroup, poleLabels, wos };
+    lyr.current = { lines, devs, xfmrs, xfmrGroup, devGroup, fuseGroup, lineGroup, devLabels, fuseLabels, roadLabels, zoneLabels, tags, trucks: new Map(), truckGroup, routes: new Map(), calls, incidents, faults, crit, selRing, osm, poles, poleGroup, poleLabels, wos, areaGroup, areaLabels };
     void rEv;
 
     const zoomVis = () => {
@@ -164,6 +176,7 @@ export function GisMap({ visible, apiRef }: { visible: boolean; apiRef: React.Mu
       show(l.lineGroup, t.feeders);
       show(l.calls, t.calls); show(l.wos, t.calls); show(l.truckGroup, t.trucks);
       show(l.osm, t.osm);
+      show(l.areaGroup, t.areas !== false);
     };
     map.on('zoomend', zoomVis);
     zoomVis();
@@ -206,7 +219,7 @@ export function GisMap({ visible, apiRef }: { visible: boolean; apiRef: React.Mu
     if (!map || !l) return;
     const e = eRef.current, T = e.T;
     const engineChanged = last.current.e !== e;
-    if (engineChanged) { last.current = { netVer: -1, incKey: '', callKey: '', faultKey: '', tagKey: '', e, sel: '', woKey: '' }; for (const m of l.trucks.values()) l.truckGroup.removeLayer(m); l.trucks.clear(); for (const r of l.routes.values()) map.removeLayer(r.line); l.routes.clear(); }
+    if (engineChanged) { last.current = { areaKey: '', netVer: -1, incKey: '', callKey: '', faultKey: '', tagKey: '', e, sel: '', woKey: '' }; for (const m of l.trucks.values()) l.truckGroup.removeLayer(m); l.trucks.clear(); for (const r of l.routes.values()) map.removeLayer(r.line); l.routes.clear(); }
 
     // Network style
     if (last.current.netVer !== e.netVer) {
@@ -255,6 +268,21 @@ export function GisMap({ visible, apiRef }: { visible: boolean; apiRef: React.Mu
         const st = e.s.dev[id];
         if (!st.tags.length) continue;
         L.marker((T.els[id] as DevEl).pos, { pane: 'ev', interactive: false, icon: L.divIcon({ className: '', html: `<div class="tagbadge" style="transform:translate(-50%,-185%)">HOLD ${st.tags.join(',')}</div>`, iconSize: [0, 0] }) }).addTo(l.tags);
+      }
+    }
+
+    // Area labels: name + the instructors assigned there
+    const tl = Object.values(e.s.trucks);
+    const areaKey = 'k' + tl.map(t => t.id + ':' + (t.area ?? '') + ':' + t.crew + ':' + t.status).join('|');
+    if (areaKey !== last.current.areaKey) {
+      last.current.areaKey = areaKey;
+      for (const a of areas()) {
+        const div = l.areaLabels.get(a.id)?.getElement()?.querySelector('.area-lbl');
+        if (!div) continue;
+        const who = tl.filter(t => t.area === a.id && t.status !== 'Off Duty').map(t => t.crew).sort();
+        div.querySelector('b')!.textContent = a.name;
+        div.querySelector('span')!.textContent = who.length ? who.join(', ') : 'no instructor';
+        div.classList.toggle('empty', !who.length);
       }
     }
 
@@ -353,8 +381,8 @@ export function GisMap({ visible, apiRef }: { visible: boolean; apiRef: React.Mu
     <div className="mapwrap" style={{ display: visible ? 'block' : 'none' }}>
       <div ref={divRef} style={{ position: 'absolute', inset: 0 }} />
       <div className="mapctl">
-        {(['feeders', 'devices', 'xfmrs', 'calls', 'trucks', 'labels', 'osm'] as (keyof Toggles)[]).map(k => (
-          <label key={k}><input type="checkbox" checked={tg[k]} onChange={() => set(k)} />{({ feeders: 'lines', devices: 'devices', xfmrs: 'transformers', calls: 'work orders', trucks: 'instructors', labels: 'labels', osm: 'satellite' } as Record<string, string>)[k]}</label>
+        {(['feeders', 'devices', 'xfmrs', 'calls', 'trucks', 'areas', 'labels', 'osm'] as (keyof Toggles)[]).map(k => (
+          <label key={k}><input type="checkbox" checked={tg[k] !== false} onChange={() => setTg(t => ({ ...t, [k]: t[k] === false }))} />{({ areas: 'areas', feeders: 'lines', devices: 'devices', xfmrs: 'transformers', calls: 'work orders', trucks: 'instructors', labels: 'labels', osm: 'satellite' } as Record<string, string>)[k]}</label>
         ))}
         <button className="btn sm" onClick={() => mapRef.current?.flyToBounds(campusBounds(), { duration: 0.5, padding: [10, 10] })}>Yard view</button>
       </div>

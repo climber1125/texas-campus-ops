@@ -22,7 +22,7 @@ export const ACTIONS = new Set([
   'issueStep', 'confirmRepeat', 'verifyIncident', 'decision', 'setSpeed', 'setPaused', 'setAutoAssist',
   'rosterAdd', 'rosterEdit', 'rosterRemove', 'lockoutDevice', 'releaseLockout', 'setNonReclose', 'notify911',
   'declareEmergency', 'crewDownDrill', 'confirmDead', 'setVoiceRadio', 'voiceTx', 'setTutStep',
-  'liveOperate', 'liveStepDone', 'liveClearance', 'liveRelease', 'liveUnitStatus', 'liveWoCreate', 'liveWoUpdate', 'liveRadio', 'liveClearEmergency', 'liveIncoming',
+  'liveOperate', 'liveStepDone', 'liveClearance', 'liveRelease', 'liveUnitStatus', 'liveUnitArea', 'liveWoCreate', 'liveWoUpdate', 'liveRadio', 'liveClearEmergency', 'liveIncoming',
 ]);
 
 export type Msg =

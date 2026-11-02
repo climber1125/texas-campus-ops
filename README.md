@@ -28,11 +28,16 @@ Only **one operator console** runs the desk at a time. A second operator device 
    - **Set source** → click the riser/pole the yard is fed from. Each span leaving the source becomes a circuit with its own breaker (CB-1, CB-2…).
    - A span that closes a loop becomes a normally-open tie automatically.
    - **Save & apply** reloads every screen with the new network.
-4. **M5 → Roster**: add the instructors working today.
+4. **Areas** (Edit network → **Areas**): name the sections of the yard.
+   - **From grids** adds a box around each 20-pole grid (Grid 1–6, numbered north to south). Rename them (e.g. "Pit 1").
+   - **＋ Draw area**: click each corner on the map, then click the green first corner (or press Enter). ✎ redraws an outline, ✕ deletes.
+   - **Save & apply**.
+5. **M5 → Roster**: add the instructors working today and pick each one's **Area**. Their phone is told, and their name shows on that area on the map.
 
 ## Running the desk
 
 - **Radio call → work order:** hold **Space** (or HOLD TO TALK) and repeat the call, or type it. Pick who called (Heard from). **→ Work order** fills pole, issue, priority, assignee and caller ("This is Mike, NLC 12 has a cracked crossarm, urgent, send Andrew"). Check the amber note, then save.
+- **Areas:** a work order takes the area its pole is in and suggests that area's instructor (Available first). The roster lists each area, who covers it and its open orders. A crew phone shows its area and the other open orders there.
 - **Work orders (M3):** Open / Closed / ＋ New. Click one for status, priority, reassign, notes, print and history. Clicking a pole on the map → **＋ Work order here**.
 - **Instructors:** click a name (map or M5) → set status as reported (En Route, On Scene, Working…), assign an order.
 - **Devices:** click a device → **Record OPEN / CLOSE** (select-before-operate, pick who reported it). Breakers/reclosers can be locked out.

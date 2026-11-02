@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getJson, setKey } from '../live/access';
 import { BOOT } from '../live/boot';
 import type { SimState, WorkOrder, Truck } from '../sim/types';
+import { areas } from '../sim/campus';
 import { sendMsg, fetchMsgs, sendClip, audioUrl, Recorder, enablePush, pushState, chime, beep, unlockChime, primeMic, livePoll, STATUS_TAPS, type ChanMsg } from '../live/comms';
 
 const UNIT_KEY = 'campusOpsUnit';
@@ -80,7 +81,11 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
   const myName = me?.crew ?? unit;
   const wos = Object.values(s?.workorders ?? {}).filter(open);
   const mine = wos.filter(w => w.truck === unit).sort((a, b) => RANK[a.priority ?? 'Routine'] - RANK[b.priority ?? 'Routine']);
-  const others = wos.filter(w => w.truck !== unit);
+  const myArea = me?.area ? areas().find(a => a.id === me.area) : undefined;
+  const areaN = (id?: string) => (id ? areas().find(a => a.id === id)?.name ?? '' : '');
+  const inArea = myArea ? wos.filter(w => w.truck !== unit && w.area === myArea.id) : [];
+  const others = wos.filter(w => w.truck !== unit && !(myArea && w.area === myArea.id));
+  const areaMates = myArea ? units.filter(t => t.area === myArea.id && t.id !== unit).map(t => t.crew) : [];
   const chan = msgs.filter(m => m.from === unit || m.to === unit || (m.from === 'CONTROL' && m.to === 'ALL'));
 
   const send = async (m: Parameters<typeof sendMsg>[0], okText?: string) => {
@@ -137,7 +142,7 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
         <div className="crew-body">
           <h2 className="crew-h">Who are you?</h2>
           {units.length ? units.map(u => (
-            <button key={u.id} className="crew-pick" onClick={() => { setUnit(u.id); unlockChime(); primeMic(); }}><b>{u.crew}</b><span className="dim">{u.type}</span></button>
+            <button key={u.id} className="crew-pick" onClick={() => { setUnit(u.id); unlockChime(); primeMic(); }}><b>{u.crew}</b><span className="dim">{u.type}{u.area ? ` · ${areaN(u.area)}` : ''}</span></button>
           )) : <div className="warnbox">Nobody is on the board yet. Ask the operator to add you (M5 → Roster), then pull down to refresh.</div>}
           {!online && <div className="warnbox" style={{ marginTop: 10 }}>No connection to the server.</div>}
         </div>
@@ -151,6 +156,7 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
         <div style={{ minWidth: 0 }}>
           <div className="crew-name">{myName}</div>
           <div className="dim" style={{ fontSize: 11 }}><span className={`chip ${me.status.replace(/\s+/g, '')}`}>{me.status}</span>{me.clearance ? <span className="badge amber" style={{ marginLeft: 4 }}>{me.clearance}</span> : null}{!online ? <span className="c-red"> · offline</span> : null}</div>
+          <div style={{ fontSize: 11.5, marginTop: 2 }}>{myArea ? <>Area: <b style={{ color: myArea.color || 'var(--cyan)' }}>{myArea.name}</b>{areaMates.length ? <span className="dim"> · with {areaMates.join(', ')}</span> : null}</> : <span className="dim">No area assigned</span>}</div>
         </div>
         <span style={{ flex: 1 }} />
         {alerts !== 'on' && <button className="btn sm warn" onClick={alertsBtn}>🔔 Alerts</button>}
@@ -169,7 +175,7 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
           {mine.map(w => (
             <div key={w.id} className={`crew-wo pri-b-${w.priority}`}>
               <div className="crew-wo-h"><b className="mono">{w.id}</b><span className={`pri-${w.priority}`}>{w.priority}</span><span className="dim">· {w.status}</span></div>
-              <div className="crew-wo-loc">{w.loc}</div>
+              <div className="crew-wo-loc">{w.loc}{w.area ? <span className="dim"> · {areaN(w.area)}</span> : null}</div>
               <div className="crew-wo-iss">{w.issue}</div>
               {w.caller ? <div className="dim" style={{ fontSize: 11 }}>Called in by {w.caller}</div> : null}
               <div className="crew-taps">{STATUS_TAPS.map(t => <button key={t.k} className={`btn ${t.k === 'complete' ? 'good' : ''}`} onClick={() => tapStatus(w, t.k)}>{t.label}</button>)}</div>
@@ -182,6 +188,10 @@ export default function CrewApp({ onFullBoard }: { onFullBoard(): void }) {
             <button className="btn" onClick={() => tapStatus(null, 'onscene')}>On scene</button>
             <button className="btn" onClick={() => send({ to: 'CONTROL', kind: 'status', status: 'offduty', text: 'Off duty' }, 'Off duty sent')}>Off duty</button>
           </div>
+          {inArea.length > 0 && <>
+            <div className="sec-t">Open in {myArea!.name}</div>
+            {inArea.map(w => <div key={w.id} className="crew-mini"><span className={`pri-${w.priority}`}>{(w.priority ?? 'Routine').slice(0, 3).toUpperCase()}</span> <b className="mono">{w.id}</b> {w.loc} — {w.issue}<span className="dim"> · {w.truck ? (s?.trucks[w.truck]?.crew ?? w.truck) : 'unassigned'}</span></div>)}
+          </>}
           {others.length > 0 && <>
             <div className="sec-t">Other open orders</div>
             {others.map(w => <div key={w.id} className="crew-mini"><span className={`pri-${w.priority}`}>{(w.priority ?? 'Routine').slice(0, 3).toUpperCase()}</span> <b className="mono">{w.id}</b> {w.loc} — {w.issue}<span className="dim"> · {w.truck ? (s?.trucks[w.truck]?.crew ?? w.truck) : 'unassigned'}</span></div>)}

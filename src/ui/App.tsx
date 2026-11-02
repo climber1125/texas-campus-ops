@@ -25,6 +25,7 @@ import { openChannel, remoteEngine, readOnlyEngine, initialView, viewUrl, VIEWS,
 import { ACCESS, getJson, putJson, setKey } from '../live/access';
 import { BOOT, reconcile } from '../live/boot';
 import { CAMPUS } from '../sim/topology';
+import { areas, areaAt, label, itemPos } from '../sim/campus';
 import type { WoDraft } from './ctx';
 import { fetchMsgs, chime, beep, audioUrl, livePoll } from '../live/comms';
 import type { LatLng } from '../sim/types';
@@ -476,7 +477,7 @@ export default function App() {
   useEffect(() => { if (isMaster && e.s.voiceRadio !== voiceReq) e.setVoiceRadio(voiceReq); });
   useEffect(() => { if (!isMaster && ce.s.voiceRadio !== voiceReq) (ce as any).setVoiceRadio(voiceReq); }, [voiceReq, isMaster, e.s.voiceRadio]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  (window as any).__ops = { e: ce, setSel: (x: Sel) => setSelLocal(x) }; // test / support hook
+  (window as any).__ops = { e: ce, setSel: (x: Sel) => setSelLocal(x), campus: () => CAMPUS, areas, areaAt, label, itemPos }; // test / support hook
   const ctx: Ctx = {
     e: ce, sel,
     setSel: (x: Sel) => { setSelLocal(x); post({ type: 'sel', from: WIN_ID, sel: x }); },

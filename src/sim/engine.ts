@@ -16,6 +16,7 @@ import { dist, bearing, lerp } from './geo';
 import { route, nearestName, SERVICE_CENTER } from './roads';
 import { CONTROL, devWord, findingText, repairMinutes, CAUSE_TEXT } from './radio';
 import { SCENARIOS, type ScenarioDef } from './scenarios';
+import { areaAt, areas } from './campus';
 import { parseRadio } from './voice';
 
 export const START_EPOCH = new Date(2026, 9, 28, 14, 30, 0).getTime();
@@ -1888,6 +1889,23 @@ export class Engine {
     this.bump(); return null;
   }
 
+  /** Assign an instructor to a yard area ('' = none). Their map marker sits in that area. */
+  liveUnitArea(id: string, areaId: string): string | null {
+    const tr = this.truck(id);
+    if (!tr) return 'Unknown unit';
+    const ar = areas().find(a => a.id === areaId);
+    if (areaId && !ar) return 'Unknown area';
+    if ((tr.area ?? '') === areaId) return null;
+    tr.area = areaId || undefined;
+    if (ar) {
+      const n = ar.poly.length;
+      tr.home = [ar.poly.reduce((s, p) => s + p[0], 0) / n, ar.poly.reduce((s, p) => s + p[1], 0) / n] as LatLng;
+      if (!tr.task && !tr.sw && !tr.clearance) tr.pos = tr.home;
+    }
+    this.log('DISPATCH', 'info', ar ? `${tr.crew} assigned to ${ar.name}` : `${tr.crew} — no area`);
+    this.bump(); return null;
+  }
+
   private woLog(wo: WorkOrder, by: string, text: string) { (wo.history ??= []).push({ t: this.s.t, by, text }); }
 
   /** Create a work order from a radio call or typed request. */
@@ -1901,6 +1919,7 @@ export class Engine {
       priority: d.priority ?? 'Routine', item: d.item ?? null, caller: (d.caller || '').trim(), createdT: this.s.t,
       createdBy: (d.by || 'Operator').trim(), source: d.source ?? 'typed', history: [],
     };
+    const ar = areaAt(pos as [number, number]); if (ar) wo.area = ar.id;
     this.s.workorders[id] = wo;
     this.woLog(wo, wo.createdBy!, `Created (${wo.source === 'radio' ? 'radio call' : 'typed'})${wo.caller ? ` — called in by ${wo.caller}` : ''}`);
     this.log('OMS', wo.priority === 'Emergency' ? 'alarm' : wo.priority === 'Urgent' ? 'warn' : 'info', `${id} ${(wo.priority ?? "Routine").toUpperCase()} — ${wo.loc}: ${issue}`);

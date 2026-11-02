@@ -1,5 +1,5 @@
 // Campus Ops — saved yard network (which items are tied together, source, devices).
-// GET  /api/network  -> { v, source, links, updatedAt, updatedBy } or 404 if never saved   (staff or operator)
+// GET  /api/network  -> { v, source, links, areas, updatedAt, updatedBy } or 404 if never saved   (staff or operator)
 // PUT  /api/network  -> body NetCfg                                                       (operator)
 import { getStore } from "@netlify/blobs";
 
@@ -33,7 +33,13 @@ export default async (req) => {
         if (l.dev && ["switch", "fuse", "recloser"].includes(l.dev.type)) o.dev = { type: l.dev.type, ...(l.dev.id ? { id: String(l.dev.id).slice(0, 24) } : {}), ...(l.dev.at ? { at: String(l.dev.at) } : {}), ...(l.dev.no ? { no: true } : {}) };
         return o;
       });
-      const cfg = { v: 1, source: typeof b.source === "string" ? b.source : null, links, updatedAt: new Date().toISOString(), updatedBy: String(b.updatedBy || "Operator").slice(0, 60) };
+      const num = n => typeof n === "number" && isFinite(n);
+      const areas = (Array.isArray(b.areas) ? b.areas : []).slice(0, 60).filter(x => x && Array.isArray(x.poly)).map((x, i) => ({
+        id: String(x.id || "A" + i).slice(0, 24), name: String(x.name || "Area " + (i + 1)).slice(0, 40),
+        poly: x.poly.filter(p => Array.isArray(p) && num(p[0]) && num(p[1])).slice(0, 40).map(p => [p[0], p[1]]),
+        ...(typeof x.color === "string" && /^#[0-9a-f]{3,8}$/i.test(x.color) ? { color: x.color } : {}),
+      })).filter(x => x.poly.length >= 3);
+      const cfg = { v: 1, source: typeof b.source === "string" ? b.source : null, links, areas, updatedAt: new Date().toISOString(), updatedBy: String(b.updatedBy || "Operator").slice(0, 60) };
       await store.setJSON("network", cfg);
       // keep the previous version so a bad save can be undone by hand
       const prev = await store.get("network-history", { type: "json" }).catch(() => null);

@@ -96,6 +96,8 @@ export interface Truck {
   sw: { order: string; idx: number } | null;
   waitIso: { inc: string; devs: string[]; purpose: string } | null;
   clearance: string | null;
+  /** Campus Ops: yard area this instructor is assigned to */
+  area?: string;
 }
 
 export type IncStatus =
@@ -159,6 +161,8 @@ export interface WorkOrder {
   // Campus Ops live fields
   issue?: string; priority?: WoPriority; item?: string | null; caller?: string; createdT?: number; createdBy?: string;
   source?: 'radio' | 'typed'; doneT?: number; history?: { t: number; by: string; text: string }[];
+  /** yard area id the order falls in */
+  area?: string;
 }
 
 export interface Violation { t: number; code: string; text: string; }

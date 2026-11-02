@@ -24,7 +24,51 @@ export interface NetLink {
   /** Device on this span. `at` = which end it sits at (item id). `no` = normally open. */
   dev?: { type: LinkDev; id?: string; at?: string; no?: boolean };
 }
-export interface NetCfg { v: 1; source: string | null; links: NetLink[]; draft?: boolean; updatedAt?: string; updatedBy?: string; }
+/** A named section of the yard (a pit, a grid, the UG row…). Instructors are assigned to areas. */
+export interface YardArea { id: string; name: string; poly: [number, number][]; color?: string; }
+export interface NetCfg { v: 1; source: string | null; links: NetLink[]; areas?: YardArea[]; draft?: boolean; updatedAt?: string; updatedBy?: string; }
+
+export const AREA_COLORS = ['#3fb6d3', '#e3a53c', '#9b86d1', '#6fb59a', '#c98bb9', '#d08a5c', '#8fb34e', '#4e9ad6', '#d6c84e', '#c96f6f'];
+
+/** Point-in-polygon (ray cast) on lat/lng. */
+export function inPoly(p: [number, number], poly: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i], [yj, xj] = poly[j];
+    if ((yi > p[0]) !== (yj > p[0]) && p[1] < ((xj - xi) * (p[0] - yi)) / (yj - yi || 1e-12) + xi) inside = !inside;
+  }
+  return inside;
+}
+let AREAS: YardArea[] = [];
+export function setAreas(a: YardArea[]) { AREAS = a; }
+export function areas(): YardArea[] { return AREAS; }
+/** The area a position falls in (smallest polygon wins when they overlap). */
+export function areaAt(p: [number, number]): YardArea | null {
+  const hits = AREAS.filter(a => a.poly.length >= 3 && inPoly(p, a.poly));
+  if (!hits.length) return null;
+  const size = (a: YardArea) => { let s = 0; for (let i = 0, j = a.poly.length - 1; i < a.poly.length; j = i++) s += (a.poly[j][1] + a.poly[i][1]) * (a.poly[j][0] - a.poly[i][0]); return Math.abs(s); };
+  return hits.sort((x, y) => size(x) - size(y))[0];
+}
+/** Starter areas: one box around each 20-pole grid (rename them, or draw your own). */
+export function suggestAreas(items: YardItem[], grids: GridBlock[], have: YardArea[]): YardArea[] {
+  const by = new Map(items.map(i => [i.id, i]));
+  const boxes = grids.map(g => {
+    const pts = g.ids.map(id => by.get(id)!).filter(Boolean).map(i => itemPos(i));
+    if (!pts.length) return null;
+    const lats = pts.map(p => p[0]), lngs = pts.map(p => p[1]);
+    const padY = 3 / 111320, padX = 3 / (111320 * Math.cos(lats[0] * Math.PI / 180));
+    return { a: Math.min(...lats) - padY, b: Math.max(...lats) + padY, c: Math.min(...lngs) - padX, d: Math.max(...lngs) + padX };
+  }).filter((x): x is { a: number; b: number; c: number; d: number } => !!x)
+    // number them north → south, then west → east
+    .sort((x, y) => Math.abs(y.b - x.b) > 8 / 111320 ? y.b - x.b : x.c - y.c);
+  const out: YardArea[] = [];
+  boxes.forEach((r, k) => {
+    const name = `Grid ${k + 1}`;
+    if (have.some(h => h.name === name)) return;
+    out.push({ id: 'A' + Date.now().toString(36) + k, name, poly: [[r.a, r.c], [r.a, r.d], [r.b, r.d], [r.b, r.c]], color: AREA_COLORS[(have.length + out.length) % AREA_COLORS.length] });
+  });
+  return out;
+}
 
 export interface CampusModel {
   T: Topology;
@@ -502,6 +546,7 @@ export function buildCampus(itemsIn: YardItem[], cfgIn: NetCfg | null): CampusMo
   const blds = items.filter(i => i.itemType === 'building');
   const home: LatLng = blds.length ? itemPos(blds.find(b => /^BLD/i.test(label(b))) ?? blds[0]) : offset(sPos, -25, 15);
 
+  setAreas(Array.isArray(cfg.areas) ? cfg.areas : []);
   return { T, subs, home, bounds, items, orphans, grids, itemNode, nodeItem, cfg: { ...cfg, source: srcId } };
 }
 

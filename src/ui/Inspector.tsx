@@ -8,7 +8,9 @@ import { sectionAround } from '../sim/network';
 import { devWord } from '../sim/radio';
 import { SUB_SPECS, CAMPUS } from '../sim/topology';
 import { itemPos, label } from '../sim/campus';
-import { itemById, WoDetail, woOpen, notifyAssign } from './Orders';
+import { itemById, WoDetail, woOpen, notifyAssign, areaCrew } from './Orders';
+import { areaName, assignArea } from './Fleet';
+import { areas } from '../sim/campus';
 import { tellUnit } from '../live/comms';
 
 const STATUSES: CrewStatus[] = ['Available', 'Dispatched', 'En Route', 'On Scene', 'Working', 'Standing By', 'Off Duty'];
@@ -135,6 +137,7 @@ function PoleView({ id }: { id: string }) {
         {(it.components ?? []).length > 0 && <><span className="k">On it</span><span className="v" style={{ whiteSpace: 'normal' }}>{it.components!.join(', ')}</span></>}
         {devs.length > 0 && <><span className="k">Devices</span><span className="v">{devs.map(d => <a key={d.id} style={{ color: 'var(--cyan)', cursor: 'pointer', marginRight: 6 }} onClick={() => setSel({ kind: 'dev', id: d.id })}>{d.id}</a>)}</span></>}
         {it.notes && <><span className="k">Notes</span><span className="v" style={{ whiteSpace: 'normal' }}>{it.notes}</span></>}
+        {(() => { const c = areaCrew(e, itemPos(it) as [number, number]); return c.area ? <><span className="k">Area</span><span className="v" style={{ whiteSpace: 'normal' }}><b style={{ color: c.area.color || 'var(--cyan)' }}>{c.area.name}</b> · {c.crew.length ? c.crew.map(t => t.crew).join(', ') : <span className="c-amber">nobody assigned</span>}</span></> : null; })()}
         <span className="k">GPS</span><span className="v">{Number(it.gpsLat ?? it.lat).toFixed(6)}, {Number(it.gpsLng ?? it.lng).toFixed(6)}{it.gpsLat != null ? <span className="dim"> · shown on an even grid</span> : null}</span>
         <span className="k">Work orders</span><span className="v">{open.length} open · {wos.length} total</span>
       </div>
@@ -222,6 +225,7 @@ export function TruckView({ id }: { id: string }) {
         <span className="k">Assignment</span><span className="v" style={{ whiteSpace: 'normal' }}>{task ? <a style={{ color: 'var(--cyan)', cursor: 'pointer' }} onClick={() => setSel({ kind: 'wo', id: task })}>{task} — {e.s.workorders[task]?.issue}</a> : '—'}</span>
         {tr.sw && <><span className="k">Switching</span><span className="v">{tr.sw.order} step {tr.sw.idx + 1}</span></>}
         {tr.clearance && <><span className="k">Clearance</span><span className="v c-amber">{tr.clearance}</span></>}
+        <span className="k">Area</span><span className="v">{readOnly ? (areaName(tr.area) || '—') : <select value={tr.area ?? ''} onChange={ev => assignArea(e, id, ev.target.value, flash)}><option value="">— none —</option>{areas().map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}</span>
         <span className="k">Location</span><span className="v">{e.locOf(tr.pos)}</span>
       </div>
       {!readOnly && <>
